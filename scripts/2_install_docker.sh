@@ -24,7 +24,7 @@ function install_docker() {
     prepare_docker_bin
   fi
   if [[ ! -f ${BASE_DIR}/docker/docker.tar.gz ]]; then
-    echo_red "Error: $(gettext 'Docker program does not exist')"
+    echo_red "Error: Docker program does not exist"
     exit 1
   fi
   if [[ ! -f "/usr/local/bin/dockerd" ]]; then
@@ -61,7 +61,7 @@ function check_docker_install() {
     if check_root; then
       install_docker
     else
-      log_warn "$(gettext 'Permission denied. pass...')"
+      log_warn "Permission denied. pass..."
     fi
   }
 }
@@ -136,7 +136,7 @@ function set_network() {
   if [[ "${use_ipv6}" == "1" ]]; then
     confirm="y"
   fi
-  read_from_input confirm "$(gettext 'Do you want to support IPv6')?" "y/n" "${confirm}"
+  read_from_input confirm "Do you want to support IPv6?" "y/n" "${confirm}"
   if [[ "${confirm}" == "y" ]]; then
     set_docker_config ipv6 "true"
     set_docker_config fixed-cidr-v6 "fc00:1010:1111:100::/64"
@@ -154,7 +154,7 @@ function check_docker_config() {
     fi
     echo_done
   else
-    log_warn "$(gettext 'Permission denied. pass...')"
+    log_warn "Permission denied. pass..."
   fi
 }
 
@@ -186,12 +186,12 @@ function check_docker_compose() {
 }
 
 function main() {
-  echo_yellow "1. $(gettext 'Install Docker')"
+  echo_yellow "1. Install Docker"
   check_docker_install
   check_compose_install
-  echo_yellow "\n2. $(gettext 'Configure Docker')"
+  echo_yellow "\n2. Configure Docker"
   check_docker_config
-  echo_yellow "\n3. $(gettext 'Start Docker')"
+  echo_yellow "\n3. Start Docker"
   check_docker_start
   check_docker_compose
 }

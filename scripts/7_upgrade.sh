@@ -16,12 +16,12 @@ function verify_upgrade_version() {
   fi
 
   if [[ -z "${current_version}" ]]; then
-    log_error "$(gettext 'The current version is not detected, please check')"
+    log_error "The current version is not detected, please check"
     exit 1
   fi
 
   if [ "$(printf '%s\n' "$required_version" "$current_version" | sort -V | head -n1)" != "$required_version" ]; then
-    log_error "$(gettext 'Your current version does not meet the minimum requirements. Please upgrade to') ${required_version}"
+    log_error "Your current version does not meet the minimum requirements. Please upgrade to ${required_version}"
     exit 1
   fi
 }
@@ -40,7 +40,7 @@ function upgrade_config() {
     check_docker_start
   fi
   if ! docker ps &>/dev/null; then
-    log_error "$(gettext 'Docker is not running, please install and start')"
+    log_error "Docker is not running, please install and start"
     exit 1
   fi
   local containers=("xadmin-nginx" "xadmin-lb")
@@ -87,27 +87,27 @@ function backup_config() {
     mkdir -p ${BACKUP_DIR}
   fi
   cp "${CONFIG_FILE}" "${backup_config_file}"
-  echo "$(gettext 'Back up to') ${backup_config_file}"
+  echo "Back up to ${backup_config_file}"
 }
 
 function backup_db() {
   if [[ "${SKIP_BACKUP_DB}" != "1" ]]; then
     if ! bash "${SCRIPT_DIR}/5_db_backup.sh"; then
       confirm="n"
-      read_from_input confirm "$(gettext 'Failed to backup the database. Continue to upgrade')?" "y/n" "${confirm}"
+      read_from_input confirm "Failed to backup the database. Continue to upgrade?" "y/n" "${confirm}"
       if [[ "${confirm}" == "n" ]]; then
         exit 1
       fi
     fi
   else
-    echo "SKIP_BACKUP_DB=${SKIP_BACKUP_DB}, $(gettext 'Skip database backup')"
+    echo "SKIP_BACKUP_DB=${SKIP_BACKUP_DB}, Skip database backup"
   fi
 }
 
 function db_migrations() {
   if docker ps | grep -E "server"&>/dev/null; then
     confirm="y"
-    read_from_input confirm "$(gettext 'Detected that the xAdmin container is running. Do you want to close the container and continue to upgrade')?" "y/n" "${confirm}"
+    read_from_input confirm "Detected that the xAdmin container is running. Do you want to close the container and continue to upgrade?" "y/n" "${confirm}"
     if [[ "${confirm}" == "y" ]]; then
       echo
       cd "${PROJECT_DIR}" || exit 1
@@ -119,9 +119,9 @@ function db_migrations() {
     fi
   fi
   if ! perform_db_migrations; then
-    log_error "$(gettext 'Failed to change the table structure')!"
+    log_error "Failed to change the table structure!"
     confirm="n"
-    read_from_input confirm "$(gettext 'Failed to change the table structure. Continue to upgrade')?" "y/n" "${confirm}"
+    read_from_input confirm "Failed to change the table structure. Continue to upgrade?" "y/n" "${confirm}"
     if [[ "${confirm}" != "y" ]]; then
       exit 1
     fi
@@ -134,7 +134,7 @@ function clean_images() {
     old_images=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep "nineaiyu/" | grep "${current_version}")
     if [[ -n "${old_images}" ]]; then
       confirm="y"
-      read_from_input confirm "$(gettext 'Do you need to clean up the old version image')?" "y/n" "${confirm}"
+      read_from_input confirm "Do you need to clean up the old version image?" "y/n" "${confirm}"
       if [[ "${confirm}" == "y" ]]; then
         echo "${old_images}" | xargs docker rmi -f
       fi
@@ -147,7 +147,7 @@ function upgrade_docker() {
     if ! /usr/local/bin/docker -v | grep ${DOCKER_VERSION} &>/dev/null; then
       echo -e "$(docker -v) \033[33m-->\033[0m Docker version \033[32m${DOCKER_VERSION}\033[0m"
       confirm="n"
-      read_from_input confirm "$(gettext 'Do you need upgrade Docker binaries')?" "y/n" "${confirm}"
+      read_from_input confirm "Do you need upgrade Docker binaries?" "y/n" "${confirm}"
       if [[ "${confirm}" == "y" ]]; then
         echo
         cd "${PROJECT_DIR}" || exit 1
@@ -170,7 +170,7 @@ function upgrade_compose() {
       echo
       echo -e "$(docker compose version) \033[33m-->\033[0m Docker Compose version \033[32m${DOCKER_COMPOSE_VERSION}\033[0m"
       confirm="n"
-      read_from_input confirm "$(gettext 'Do you need upgrade Docker Compose')?" "y/n" "${confirm}"
+      read_from_input confirm "Do you need upgrade Docker Compose?" "y/n" "${confirm}"
       if [[ "${confirm}" == "y" ]]; then
         echo
         cd "${BASE_DIR}" || exit 1
@@ -188,7 +188,7 @@ function main() {
     to_version="${target}"
   fi
 
-  read_from_input confirm "$(gettext 'Are you sure you want to update the current version to') ${to_version} ?" "y/n" "${confirm}"
+  read_from_input confirm "Are you sure you want to update the current version to ${to_version} ?" "y/n" "${confirm}"
   if [[ "${confirm}" != "y" || -z "${to_version}" ]]; then
     exit 3
   fi
@@ -203,29 +203,29 @@ function main() {
   echo
   check_compose_install
 
-  echo_yellow "\n2. $(gettext 'Loading Docker Image')"
+  echo_yellow "\n2. Loading Docker Image"
   bash "${BASE_DIR}/3_load_images.sh"
 
-  echo_yellow "\n3. $(gettext 'Backup database')"
+  echo_yellow "\n3. Backup database"
   backup_db
 
-  echo_yellow "\n4. $(gettext 'Backup Configuration File')"
+  echo_yellow "\n4. Backup Configuration File"
   backup_config
 
-  echo_yellow "\n5. $(gettext 'Apply database changes')"
-  echo "$(gettext 'Changing database schema may take a while, please wait patiently')"
+  echo_yellow "\n5. Apply database changes"
+  echo "Changing database schema may take a while, please wait patiently"
   db_migrations
 
-  echo_yellow "\n6. $(gettext 'Cleanup Image')"
+  echo_yellow "\n6. Cleanup Image"
   clean_images
 
-  echo_yellow "\n7. $(gettext 'Upgrade Docker')"
+  echo_yellow "\n7. Upgrade Docker"
   upgrade_docker
   upgrade_compose
 
   installation_log "upgrade"
 
-  echo_yellow "\n8. $(gettext 'Upgrade successfully. You can now restart the program')"
+  echo_yellow "\n8. Upgrade successfully. You can now restart the program"
   echo "cd ${PROJECT_DIR}"
   echo "./xadmin.sh start"
   echo -e "\n"

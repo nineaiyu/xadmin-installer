@@ -15,9 +15,6 @@ function install_soft() {
       zypper -q -n install "$1"
     elif command -v apk &>/dev/null; then
       apk add -q "$1"
-      command -v gettext &>/dev/null || {
-      apk add -q gettext-dev python3
-    }
     else
       echo -e "[\033[31m ERROR \033[0m] $1 command not found, Please install it first"
       exit 1

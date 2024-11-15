@@ -8,9 +8,6 @@
 #
 # DOCKER_IMAGE_MIRROR=1
 
-#
-# USE_DOCKER_MIRROR=1
-
 # Image pull policy Always, IfNotPresent
 # Always means that the latest image will be pulled every time, IfNotPresent means that the image will be pulled only if it does not exist locally
 #

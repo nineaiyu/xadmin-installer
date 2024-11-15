@@ -36,31 +36,31 @@ function pre_check() {
 }
 
 function usage() {
-  echo "$(gettext 'xAdmin Deployment Management Script')"
+  echo "xAdmin Deployment Management Script"
   echo
   echo "Usage: "
   echo "  ./xadmin.sh [COMMAND] [ARGS...]"
   echo "  ./xadmin.sh --help"
   echo
   echo "Installation Commands: "
-  echo "  install           $(gettext 'Install xAdmin')"
-  echo "  upgrade           $(gettext 'Upgrade xAdmin')"
+  echo "  install           Install xAdmin"
+  echo "  upgrade           Upgrade xAdmin"
   echo
   echo "Management Commands: "
-  echo "  config            $(gettext 'Configuration  Tools')"
-  echo "  start             $(gettext 'Start     xAdmin')"
-  echo "  stop              $(gettext 'Stop      xAdmin')"
-  echo "  restart           $(gettext 'Restart   xAdmin')"
-  echo "  status            $(gettext 'Check     xAdmin')"
-  echo "  down              $(gettext 'Offline   xAdmin')"
-  echo "  uninstall         $(gettext 'Uninstall xAdmin')"
+  echo "  config            Configuration  Tools"
+  echo "  start             Start     xAdmin"
+  echo "  stop              Stop      xAdmin"
+  echo "  restart           Restart   xAdmin"
+  echo "  status            Check     xAdmin"
+  echo "  down              Offline   xAdmin"
+  echo "  uninstall         Uninstall xAdmin"
   echo
   echo "More Commands: "
-  echo "  load_image        $(gettext 'Loading docker image')"
-  echo "  backup_db         $(gettext 'Backup database')"
-  echo "  restore_db [file] $(gettext 'Data recovery through database backup file')"
-  echo "  raw               $(gettext 'Execute the original docker compose command')"
-  echo "  tail [service]    $(gettext 'View log')"
+  echo "  load_image        Loading docker image"
+  echo "  backup_db         Backup database"
+  echo "  restore_db [file] Data recovery through database backup file"
+  echo "  raw               Execute the original docker compose command"
+  echo "  tail [service]    View log"
   echo
 }
 
@@ -115,12 +115,12 @@ function check_update() {
   current_version=$(get_current_version)
   latest_version=$(get_latest_version)
   if [[ "${current_version}" == "${latest_version}" ]]; then
-    echo_green "$(gettext 'The current version is up to date'): ${latest_version}"
+    echo_green "The current version is up to date: ${latest_version}"
     echo
     return
   fi
   if [[ -n "${latest_version}" ]] && [[ ${latest_version} =~ v.* ]]; then
-    echo -e "\033[32m$(gettext 'The latest version is'): ${latest_version}\033[0m"
+    echo -e "\033[32mThe latest version is: ${latest_version}\033[0m"
   else
     exit 1
   fi
@@ -129,12 +129,12 @@ function check_update() {
 function main() {
   if [[ "${OS}" == 'Darwin' ]]; then
     echo
-    echo "$(gettext 'Unsupported Operating System Error')"
+    echo "Unsupported Operating System Error"
     exit 0
   fi
   if [[ "${OS}" =~ MINGW.* ]]; then
     echo
-    echo "$(gettext 'Unsupported Operating System Error')"
+    echo "Unsupported Operating System Error"
     exit 0
   fi
 

@@ -16,7 +16,7 @@ function main() {
   if [[ ! -d ${BACKUP_DIR} ]]; then
     mkdir -p ${BACKUP_DIR}
   fi
-  echo "$(gettext 'Backing up')..."
+  echo "Backing up..."
 
   db_images=$(get_db_images)
 
@@ -42,18 +42,18 @@ function main() {
       backup_cmd='PGPASSWORD=${DB_PASSWORD} pg_dump --format=custom --no-owner -U $DB_USER -h $DB_HOST -p $DB_PORT -d "$DB_DATABASE" -f '${DB_FILE}
       ;;
     *)
-      log_error "$(gettext 'Invalid DB Engine selection')!"
+      log_error "Invalid DB Engine selection!"
       exit 1
       ;;
   esac
 
   if ! docker run --rm --env-file=${CONFIG_FILE} -i --network=xadmin_net -v "${BACKUP_DIR}:${BACKUP_DIR}" "${db_images}" bash -c "${backup_cmd}"; then
-    log_error "$(gettext 'Backup failed')!"
-    log_error "$(gettext 'Backup failed')!"
+    log_error "Backup failed!"
+    log_error "Backup failed!"
     rm -f "${DB_FILE}"
     exit 1
   else
-    log_success "$(gettext 'Backup succeeded! The backup file has been saved to'): ${DB_FILE}"
+    log_success "Backup succeeded! The backup file has been saved to: ${DB_FILE}"
   fi
 
   if [[ -n "$flag" ]]; then

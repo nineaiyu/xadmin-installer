@@ -16,7 +16,7 @@ function load_image_files() {
       filename=${filename_windows}
     fi
     if [[ ! -f ${IMAGE_DIR}/${filename} ]]; then
-      echo_red "$(gettext 'Docker image not found'): ${IMAGE_DIR}/${filename}"
+      echo_red "Docker image not found: ${IMAGE_DIR}/${filename}"
       continue
     fi
 
@@ -33,7 +33,7 @@ function load_image_files() {
       echo
       docker load <"${IMAGE_DIR}/${filename}"
     else
-      echo "$(gettext 'Docker image loaded, skipping')"
+      echo "Docker image loaded, skipping"
     fi
   done
 }

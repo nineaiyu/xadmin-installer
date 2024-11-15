@@ -200,9 +200,9 @@ function read_from_input() {
     msg="${msg} (${choices}) "
   fi
   if [[ -z "${default}" ]]; then
-    msg="${msg} ($(gettext 'no default'))"
+    msg="${msg} (no default)"
   else
-    msg="${msg} ($(gettext 'default') ${default})"
+    msg="${msg} (default ${default})"
   fi
   echo -n "${msg}: "
   read -r input
@@ -250,7 +250,7 @@ function echo_yellow() {
 
 function echo_done() {
   sleep 0.5
-  echo "$(gettext 'complete')"
+  echo "complete"
 }
 
 function echo_check() {
@@ -262,7 +262,7 @@ function echo_warn() {
 }
 
 function echo_failed() {
-  echo_red "$(gettext 'fail')"
+  echo_red "fail"
 }
 
 function log_success() {
@@ -331,9 +331,9 @@ function get_docker_compose_cmd_line() {
 }
 
 function prepare_check_required_pkg() {
-  for i in curl wget tar iptables gettext; do
+  for i in curl wget tar iptables; do
     command -v $i &>/dev/null || {
-        echo_red "$i: $(gettext 'command not found, Please install it first') $i"
+        echo_red "$i: command not found, Please install it first $i"
         flag=1
     }
   done
@@ -365,8 +365,8 @@ function prepare_config() {
     chmod 755 /usr/bin/xadmin
   fi
 
-  echo_yellow "1. $(gettext 'Check Configuration File')"
-  echo "$(gettext 'Path to Configuration file'): ${CONFIG_DIR}"
+  echo_yellow "1. Check Configuration File"
+  echo "Path to Configuration file: ${CONFIG_DIR}"
   if [[ ! -d ${CONFIG_DIR} ]]; then
     mkdir -p "${CONFIG_DIR}"
     cp config-example.txt "${CONFIG_FILE}"
@@ -515,7 +515,7 @@ function perform_db_migrations() {
   fi
 
   docker exec -i xadmin-server bash -c 'python manage.py migrate' || {
-    log_error "$(gettext 'Failed to change the table structure')!"
+    log_error "Failed to change the table structure!"
     exit 1
   }
 }
@@ -596,7 +596,7 @@ function check_images() {
   done
   for image in ${images_to}; do
     if ! docker image inspect -f '{{ .Id }}' "$image" &>/dev/null; then
-      echo_red "$(gettext 'Failed to pull image') ${image}"
+      echo_red "Failed to pull image ${image}"
       failed=1
     fi
   done

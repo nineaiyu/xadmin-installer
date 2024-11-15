@@ -12,16 +12,16 @@ DB_HOST=$(get_config DB_HOST)
 DB_DATABASE=$(get_config DB_DATABASE)
 
 function main() {
-  echo_warn "$(gettext 'Make sure you have a backup of data, this operation is not reversible')! \n"
+  echo_warn "Make sure you have a backup of data, this operation is not reversible! \n"
 
   if [[ ! -f "${DB_FILE}" ]]; then
-    echo "$(gettext 'file does not exist'): ${DB_FILE}"
+    echo "file does not exist: ${DB_FILE}"
     exit 1
   fi
 
   db_images=$(get_db_images)
 
-  echo "$(gettext 'Start restoring database'): $DB_FILE"
+  echo "Start restoring database: $DB_FILE"
 
   if ! docker ps | grep -w "xadmin-server" &>/dev/null; then
     create_db_ops_env
@@ -43,16 +43,16 @@ function main() {
       restore_cmd='PGPASSWORD=${DB_PASSWORD} pg_restore --if-exists --clean --no-owner -U $DB_USER -h $DB_HOST -p $DB_PORT -d $DB_DATABASE '${DB_FILE}
       ;;
     *)
-      log_error "$(gettext 'Invalid DB Engine selection')!"
+      log_error "Invalid DB Engine selection!"
       exit 1
       ;;
   esac
 
   if ! docker run --rm --env-file=${CONFIG_FILE} -i --network=xadmin_net -v "${BACKUP_DIR}:${BACKUP_DIR}" "${db_images}" bash -c "${restore_cmd}"; then
-    log_error "$(gettext 'Database recovery failed. Please check whether the database file is complete or try to recover manually')!"
+    log_error "Database recovery failed. Please check whether the database file is complete or try to recover manually!"
     exit 1
   else
-    log_success "$(gettext 'Database recovered successfully')!"
+    log_success "Database recovered successfully!"
   fi
 
   if [[ -n "$flag" ]]; then
@@ -63,11 +63,11 @@ function main() {
 
 if [[ "$0" == "${BASH_SOURCE[0]}" ]]; then
   if [[ -z "$1" ]]; then
-    log_error "$(gettext 'Format error')！Usage './xadmin.sh restore_db DB_Backup_file '"
+    log_error "Format error！Usage './xadmin.sh restore_db DB_Backup_file '"
     exit 1
   fi
   if [[ ! -f $1 ]]; then
-    echo "$(gettext 'The backup file does not exist'): $1"
+    echo "The backup file does not exist: $1"
     exit 1
   fi
   main
