@@ -1,0 +1,21 @@
+services:
+  server:
+    image: ${REGISTRY:-docker.io}/nineaiyu/xadmin-server:${VERSION}
+    container_name: xadmin-server
+    hostname: xadmin-server
+    ulimits:
+      core: 0
+    restart: always
+    command: start web
+    env_file:
+      - ${CONFIG_FILE}
+    volumes:
+      - ${VOLUME_DIR}/server/data:/data/xadmin-server/data
+    healthcheck:
+      test: "curl -fsL http://localhost:8896/api/common/api/health > /dev/null"
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    networks:
+      - net

@@ -1,0 +1,24 @@
+services:
+  celery:
+    image: ${REGISTRY:-docker.io}/nineaiyu/xadmin-server:${VERSION}
+    container_name: xadmin-celery
+    hostname: xadmin-celery
+    ulimits:
+      core: 0
+    restart: always
+    privileged: true
+    command: start task
+    env_file:
+      - ${CONFIG_FILE}
+    environment:
+      LC_ALL: C.UTF-8
+    volumes:
+      - ${VOLUME_DIR}/server/data:/data/xadmin-server/data
+    healthcheck:
+      test: "bash utils/check_celery.sh"
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - net

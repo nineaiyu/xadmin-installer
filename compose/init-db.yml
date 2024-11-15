@@ -1,0 +1,12 @@
+services:
+  server:
+    image: ${REGISTRY:-docker.io}/nineaiyu/xadmin-server:${VERSION}
+    container_name: xadmin-server
+    hostname: xadmin-server
+    command: sleep
+    env_file:
+      - ${CONFIG_FILE}
+    volumes:
+      - ${VOLUME_DIR}/xadmin-server/data:/data/xadmin-server/data
+    networks:
+      - net

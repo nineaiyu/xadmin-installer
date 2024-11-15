@@ -1,0 +1,17 @@
+.idea
+*.tar
+.DS_store
+*.rpm
+*.zip
+*.tar.gz
+scripts/docker/*
+!scripts/docker/docker.service
+scripts/images/
+backup
+config.txt
+cofnig.link
+.env
+.bak
+config.link
+release/*
+.history/
