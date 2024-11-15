@@ -3,10 +3,13 @@
 
 ################################# Image Configuration #################################
 #
-# The connection to docker.io in China will timeout or the download speed will be slow, enable this option to use Huawei Cloud image acceleration
+# The connection to docker.io in China will time out or the download speed will be slow, enable this option to use Huawei Cloud image acceleration
 # Replace the old version DOCKER_IMAGE_PREFIX
 #
 # DOCKER_IMAGE_MIRROR=1
+
+#
+# USE_DOCKER_MIRROR=1
 
 # Image pull policy Always, IfNotPresent
 # Always means that the latest image will be pulled every time, IfNotPresent means that the image will be pulled only if it does not exist locally
