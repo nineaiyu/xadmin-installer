@@ -41,10 +41,8 @@ if [ -n "${BUILD_ARCH}" ]; then
   ARCH=${BUILD_ARCH}
 fi
 
-echo ARCH
-echo DOCKER_BIN_URL="${DOCKER_URL}/${ARCH}/docker-${DOCKER_VERSION}.tgz"
-echo DOCKER_MD5_URL="${DOCKER_MIRROR}/${ARCH}/docker-${DOCKER_VERSION}.tgz.md5"
-echo COMPOSE_BIN_URL="${COMPOSE_URL}/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
-echo COMPOSE_MD5_URL="${COMPOSE_MIRROR}/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-${ARCH}.md5"
-
-echo ${USE_DOCKER_MIRROR}
+export ARCH
+export DOCKER_BIN_URL="${DOCKER_URL}/${ARCH}/docker-${DOCKER_VERSION}.tgz"
+export DOCKER_MD5_URL="${DOCKER_MIRROR}/${ARCH}/docker-${DOCKER_VERSION}.tgz.md5"
+export COMPOSE_BIN_URL="${COMPOSE_URL}/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-${ARCH}"
+export COMPOSE_MD5_URL="${COMPOSE_MIRROR}/${DOCKER_COMPOSE_VERSION}/docker-compose-linux-${ARCH}.md5"

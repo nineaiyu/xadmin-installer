@@ -7,6 +7,6 @@ services:
     env_file:
       - ${CONFIG_FILE}
     volumes:
-      - ${VOLUME_DIR}/xadmin-server/data:/data/xadmin-server/data
+      - ${VOLUME_DIR}/server/data:/data/xadmin-server/data
     networks:
       - net

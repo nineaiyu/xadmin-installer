@@ -44,7 +44,7 @@ function post_install() {
   else
     echo "http://${host}:${http_port}"
   fi
-
+  echo "Default Superuser username: $(echo_green xadmin) Default password: $(echo_red xAdminPwd!)"
   echo_yellow "\n More information"
   echo "Documentation: https://docs.dvcloud.xin/"
   echo -e "\n"

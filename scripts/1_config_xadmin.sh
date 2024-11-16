@@ -193,6 +193,13 @@ function init_db() {
     log_error "Failed to change the table structure!"
     exit 1
   fi
+  if ! init_mariadb_tz_info; then
+    log_warn "Failed to import tz info!"
+  fi
+  if ! init_default_data; then
+    log_warn "Failed to import default data!"
+    exit 1
+  fi
 }
 
 function main() {

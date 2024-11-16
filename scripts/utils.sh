@@ -495,6 +495,29 @@ function down_db_ops_env() {
   docker rm xadmin-server &>/dev/null
 }
 
+function init_mariadb_tz_info() {
+  DB_HOST=$(get_config DB_HOST)
+
+  if [[ "${DB_HOST}" == "mysql" ]]; then
+    while [[ "$(docker inspect -f "{{.State.Health.Status}}" xadmin-${DB_HOST})" != "healthy" ]]; do
+      sleep 5s
+    done
+  fi
+  sql_cmd='mariadb-tzinfo-to-sql /usr/share/zoneinfo | mariadb -P$DB_PORT -p$MARIADB_ROOT_PASSWORD  mysql'
+  docker exec -it xadmin-${DB_HOST} bash -c "${sql_cmd}"  || {
+    log_error "Failed to import tz info!"
+    exit 1
+    }
+}
+
+function init_default_data() {
+  create_db_ops_env
+  docker exec -i xadmin-server bash -c 'python utils/init_data.py' || {
+    log_error "Failed to import default data!"
+    exit 1
+  }
+}
+
 function perform_db_migrations() {
   db_host=$(get_config DB_HOST)
   redis_host=$(get_config REDIS_HOST)
