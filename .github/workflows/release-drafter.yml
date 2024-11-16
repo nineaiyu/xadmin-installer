@@ -43,6 +43,6 @@ jobs:
 
       - name: Release Upload Assets
         run: |
-          gh release upload ${{ steps.get_version.outputs.TAG }} build/* -R $GITHUB_REPOSITORY
+          gh release upload ${{ steps.get_version.outputs.TAG }} build/* -R $GITHUB_REPOSITORY --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
