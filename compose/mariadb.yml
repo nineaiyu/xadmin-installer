@@ -1,6 +1,6 @@
 services:
   mysql:
-    image: ${REGISTRY/nineaiyu:-docker.io/library}/mariadb:11.5.2
+    image: mariadb:11.5.2
     container_name: xadmin-mysql
     restart: always
     command: --character-set-server=utf8 --collation-server=utf8_general_ci

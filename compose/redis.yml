@@ -1,6 +1,6 @@
 services:
   redis:
-    image: ${REGISTRY/nineaiyu:-docker.io/library}/redis:7.4.1
+    image: redis:7.4.1
     container_name: xadmin-redis
     hostname: xadmin-redis
     restart: always

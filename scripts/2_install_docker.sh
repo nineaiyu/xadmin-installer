@@ -159,7 +159,7 @@ function check_docker_config() {
 }
 
 function start_docker() {
-  if command -v systemctl&>/dev/null; then
+  if command -v systemctl &>/dev/null; then
     systemctl daemon-reload
     systemctl enable docker
     systemctl start docker
