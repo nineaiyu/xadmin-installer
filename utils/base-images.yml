@@ -3,3 +3,4 @@
 "docker.io/library/redis:7.4.1": "registry.cn-beijing.aliyuncs.com/nineaiyu/redis:7.4.1"
 "docker.io/library/node:22.11.0-slim": "registry.cn-beijing.aliyuncs.com/nineaiyu/node:22.11.0-slim"
 "docker.io/library/python:3.12.7-slim": "registry.cn-beijing.aliyuncs.com/nineaiyu/python:3.12.7-slim"
+"docker.io/library/nginx:1.24-bullseye": "registry.cn-beijing.aliyuncs.com/nineaiyu/nginx:1.24-bullseye"
