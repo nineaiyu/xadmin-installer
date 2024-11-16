@@ -21,6 +21,8 @@ jobs:
 
       - name: start sync
         run: |
+          TAG=$(basename ${GITHUB_REF})
+          VERSION=${TAG/v/}
           cat <<EOF > auth.yml
           registry.cn-beijing.aliyuncs.com:
               username: ${{ secrets.ALIYUN_REGISTRY_USER }}
