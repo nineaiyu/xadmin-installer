@@ -14,11 +14,11 @@ jobs:
         uses: actions/checkout@v4
 
       - name: prepare
-        if: steps.check_body.outputs.is_image_format == 'true'
         run: |
           wget -q  https://github.com/AliyunContainerService/image-syncer/releases/download/v1.5.5/image-syncer-v1.5.5-linux-amd64.tar.gz
           tar zxf image-syncer-v1.5.5-linux-amd64.tar.gz
           mv image-asyncer /usr/local/bin/
+
       - name: start sync
         run: |
           cat <<EOF > auth.yml
