@@ -6,7 +6,7 @@
 # The connection to docker.io in China will time out or the download speed will be slow, enable this option to use Huawei Cloud image acceleration
 # Replace the old version DOCKER_IMAGE_PREFIX
 #
-# DOCKER_IMAGE_MIRROR=1
+DOCKER_IMAGE_MIRROR=1
 
 # Image pull policy Always, IfNotPresent
 # Always means that the latest image will be pulled every time, IfNotPresent means that the image will be pulled only if it does not exist locally
@@ -38,9 +38,17 @@ DOCKER_SUBNET=192.168.196.0/24
 # For external databases, you need to enter the correct database information, the system will automatically handle the built-in database
 # (*) The password part must not contain single quotes and double quotes
 #
-DB_ENGINE=mysql
-DB_HOST=mysql
-DB_PORT=3306
+
+# mariadb
+# DB_ENGINE=mysql
+# DB_HOST=mysql
+# DB_PORT=3306
+
+# postgresql
+DB_ENGINE=postgresql
+DB_HOST=postgresql
+DB_PORT=5432
+
 DB_PASSWORD=
 DB_USER=server
 DB_DATABASE=xadmin

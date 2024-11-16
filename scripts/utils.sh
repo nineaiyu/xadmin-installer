@@ -502,12 +502,12 @@ function init_mariadb_tz_info() {
     while [[ "$(docker inspect -f "{{.State.Health.Status}}" xadmin-${DB_HOST})" != "healthy" ]]; do
       sleep 5s
     done
+    sql_cmd='mariadb-tzinfo-to-sql /usr/share/zoneinfo | mariadb -P$DB_PORT -p$MARIADB_ROOT_PASSWORD  mysql'
+    docker exec -it xadmin-${DB_HOST} bash -c "${sql_cmd}"  || {
+      log_error "Failed to import tz info!"
+      exit 1
+      }
   fi
-  sql_cmd='mariadb-tzinfo-to-sql /usr/share/zoneinfo | mariadb -P$DB_PORT -p$MARIADB_ROOT_PASSWORD  mysql'
-  docker exec -it xadmin-${DB_HOST} bash -c "${sql_cmd}"  || {
-    log_error "Failed to import tz info!"
-    exit 1
-    }
 }
 
 function init_default_data() {
