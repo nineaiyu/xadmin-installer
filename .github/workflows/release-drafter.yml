@@ -20,6 +20,7 @@ jobs:
         run: |
           TAG=$(basename ${GITHUB_REF})
           echo "TAG=$TAG" >> $GITHUB_OUTPUT
+          echo "VERSION=${TAG/v/}" >> $GITHUB_OUTPUT
 
       - name: Create Release
         id: create_release
@@ -35,6 +36,7 @@ jobs:
         run: |
           mkdir -p build xadmin-installer-${{ steps.get_version.outputs.TAG }}
           git archive --format tar HEAD | tar x -C xadmin-installer-${{ steps.get_version.outputs.TAG }}
+          sed -i "s@VERSION=.*@VERSION=${{ steps.get_version.outputs.VERSION }}@g"  xadmin-installer-${{ steps.get_version.outputs.TAG }}/static.env
           tar -czf build/xadmin-installer-${{ steps.get_version.outputs.TAG }}.tar.gz xadmin-installer-${{ steps.get_version.outputs.TAG }}
           cd build
           md5sum xadmin-installer-${{ steps.get_version.outputs.TAG }}.tar.gz > xadmin-installer-${{ steps.get_version.outputs.TAG }}.tar.gz.md5

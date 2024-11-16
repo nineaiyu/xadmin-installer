@@ -561,14 +561,7 @@ function pull_image() {
   IMAGE_PULL_POLICY=$(get_config_or_env 'IMAGE_PULL_POLICY')
 
   if [[ "${DOCKER_IMAGE_MIRROR}" == "1" ]]; then
-    case "$(uname -m)" in
-      "x86_64")
-        DOCKER_IMAGE_PREFIX="swr.cn-north-1.myhuaweicloud.com"
-        ;;
-      "aarch64")
-        DOCKER_IMAGE_PREFIX="swr.cn-north-4.myhuaweicloud.com"
-        ;;
-    esac
+    DOCKER_IMAGE_PREFIX="registry.cn-beijing.aliyuncs.com"
   else
     DOCKER_IMAGE_PREFIX=$(get_config_or_env 'DOCKER_IMAGE_PREFIX')
   fi

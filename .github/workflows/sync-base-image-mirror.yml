@@ -1,0 +1,33 @@
+name: sync-base-image-mirror
+
+on:
+  push:
+    branches:
+      - 'main'
+      - 'dev'
+    paths:
+      - 'utils/base-images.yml'
+
+
+jobs:
+  sync_to_target_registry:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: prepare
+        if: steps.check_body.outputs.is_image_format == 'true'
+        run: |
+          wget -q  https://github.com/AliyunContainerService/image-syncer/releases/download/v1.5.5/image-syncer-v1.5.5-linux-amd64.tar.gz
+          tar zxf image-syncer-v1.5.5-linux-amd64.tar.gz
+          mv image-asyncer /usr/local/bin/
+      - name: start sync
+        run: |
+          cat <<EOF > auth.yml
+          registry.cn-beijing.aliyuncs.com:
+              username: ${{ secrets.ALIYUN_REGISTRY_USER }}
+              password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+          EOF
+
+          image-syncer  --auth=./auth.yml --images=./utils/base-images.yml
