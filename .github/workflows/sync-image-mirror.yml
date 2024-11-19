@@ -32,5 +32,6 @@ jobs:
           cat <<EOF > images.yml
           "docker.io/nineaiyu/xadmin-server:${VERSION}": "registry.cn-beijing.aliyuncs.com/nineaiyu/xadmin-server:${VERSION}"
           "docker.io/nineaiyu/xadmin-web:${VERSION}": "registry.cn-beijing.aliyuncs.com/nineaiyu/xadmin-web:${VERSION}"
+          "docker.io/nineaiyu/xadmin-docs:${VERSION}": "registry.cn-beijing.aliyuncs.com/nineaiyu/xadmin-docs:${VERSION}"
           EOF
           image-syncer  --auth=./auth.yml --images=./images.yml
