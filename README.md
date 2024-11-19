@@ -43,21 +43,17 @@ $ ./xadmin.sh tail
 [root@localhost config]# tree .
 .
 ├── config.txt       # 主配置文件
-├── mysql
-│   └── my.cnf       # mysql 配置文件
 |── mariadb
 |   └── mariadb.cnf  # mariadb 配置文件
 ├── nginx            # nginx 配置文件
 │   ├── cert
 │   │   ├── server.crt
 │   │   └── server.key
-│   ├── lb_http_server.conf
-│   └── lb_ssh_server.conf
+│   └── lb_http_server.conf
 ├── README.md
 └── redis
     └── redis.conf  # redis 配置文件
 
-6 directories, 11 files
 ```
 
 ### config.txt 说明
