@@ -56,6 +56,7 @@ function usage() {
   echo "  uninstall         Uninstall xAdmin"
   echo
   echo "More Commands: "
+  echo "  check_update      Check latest version"
   echo "  load_image        Loading docker image"
   echo "  backup_db         Backup database"
   echo "  restore_db [file] Data recovery through database backup file"
@@ -113,14 +114,18 @@ function restart() {
 
 function check_update() {
   current_version=$(get_current_version)
-  latest_version=$(get_latest_version)
+  tmp_version=$(get_latest_version)
+  latest_version=${tmp_version/v/}
   if [[ "${current_version}" == "${latest_version}" ]]; then
     echo_green "The current version is up to date: ${latest_version}"
     echo
     return
   fi
-  if [[ -n "${latest_version}" ]] && [[ ${latest_version} =~ v.* ]]; then
-    echo -e "\033[32mThe latest version is: ${latest_version}\033[0m"
+  if [[ -n "${latest_version}" ]] && [[ ${tmp_version} =~ v.* ]]; then
+    echo_yellow "The current version is : ${current_version}"
+    echo_green  "The latest  version is : ${latest_version}"
+    echo
+    bash "${SCRIPT_DIR}/7_upgrade.sh" "${latest_version}"
   else
     exit 1
   fi
