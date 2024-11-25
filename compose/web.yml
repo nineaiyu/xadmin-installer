@@ -17,7 +17,7 @@ services:
       - ${VOLUME_DIR}/server/data:/data/xadmin/server/data
       - ${VOLUME_DIR}/nginx/data/logs:/var/log/nginx
     healthcheck:
-      test: "check http://localhost:51980/api/health/"
+      test: "curl -fsL http://localhost:51980/web/health/"
       interval: 10s
       timeout: 5s
       retries: 3
