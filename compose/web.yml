@@ -10,6 +10,7 @@ services:
       TZ: ${TZ:-Asia/Shanghai}
       HTTP_PORT: ${HTTP_PORT:-80}
       USE_LB: ${USE_LB:-1}
+      GZIP: ${GZIP:-on}
       CLIENT_MAX_BODY_SIZE: ${CLIENT_MAX_BODY_SIZE:-4096m}
     ports:
       - ${HTTP_PORT:-80}:${HTTP_PORT:-80}
