@@ -153,9 +153,9 @@ function get_db_info() {
   case "${info_type}" in
     "image")
       if [[ "${mariadb_data_exists}" == "1" ]]; then
-        echo "mariadb:11.5.2"
+        echo "mariadb:11.7.2"
       elif [[ "${postgres_data_exists}" == "1" ]]; then
-        echo "postgres:16.5"
+        echo "postgres:16.7"
       fi
       ;;
     "file")
@@ -181,7 +181,7 @@ function get_db_images_file() {
 function get_images() {
   db_images=$(get_db_images)
   images=(
-    "redis:7.4.1"
+    "redis:7.4.2"
     "${db_images}"
   )
   for image in "${images[@]}"; do
