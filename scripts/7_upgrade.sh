@@ -26,6 +26,37 @@ function verify_upgrade_version() {
   fi
 }
 
+function preflight_check() {
+  echo_yellow "\nPreflight checks"
+  # 1) 磁盘空间：镜像加载 + 数据库体积余量（低于 5 GiB 中止）
+  local volume_dir=$(get_config VOLUME_DIR)
+  local check_path="${volume_dir:-/}"
+  local avail_kb=$(df -Pk "${check_path}" 2>/dev/null | awk 'NR==2 {print $4}')
+  if [[ -n "${avail_kb}" && "${avail_kb}" -lt 5242880 ]]; then
+    log_error "Insufficient disk space at ${check_path} (need >= 5 GiB). Free space before upgrading."
+    exit 1
+  fi
+  echo "  - disk space ok (>= 5 GiB at ${check_path})"
+  # 2) 关键容器健康（unhealthy 时人工确认；未运行视为冷升级放行）
+  local name status
+  for name in xadmin-postgresql xadmin-redis; do
+    status=$(docker inspect -f '{{.State.Health.Status}}' "${name}" 2>/dev/null || true)
+    if [[ -n "${status}" && "${status}" != "healthy" ]]; then
+      confirm="n"
+      read_from_input confirm "Container ${name} is '${status}'. Continue anyway?" "y/n" "${confirm}"
+      [[ "${confirm}" == "y" ]] || exit 1
+    fi
+  done
+  echo "  - key containers healthy (or confirmed)"
+  # 3) 备份目录可写（升级流程依赖数据库备份产物）
+  local backup_dir="${volume_dir}/db_backup"
+  mkdir -p "${backup_dir}" 2>/dev/null || {
+    log_error "Backup directory is not writable: ${backup_dir}"
+    exit 1
+  }
+  echo "  - backup dir writable: ${backup_dir}"
+}
+
 function check_and_set_config() {
   local config_key=$1
   local default_value=$2
@@ -199,6 +230,7 @@ function main() {
   fi
   echo
   verify_upgrade_version
+  preflight_check
   update_config_if_need
   echo
   check_compose_install
@@ -228,6 +260,12 @@ function main() {
   echo_yellow "\n8. Upgrade successfully. You can now restart the program"
   echo "cd ${PROJECT_DIR}"
   echo "./xadmin.sh start"
+  echo
+  echo_yellow "Rollback (if the new version is abnormal):"
+  echo "  1) Stop services:  bash ./xadmin.sh stop"
+  echo "  2) Restore database: bash ${BASE_DIR}/6_db_restore.sh"
+  echo "  3) Restore config:  cp <config backup printed above> ${CONFIG_FILE}"
+  echo "  4) Revert VERSION in static.env and re-run ${BASE_DIR}/3_load_images.sh, then ./xadmin.sh start"
   echo -e "\n"
   set_current_version
 }
