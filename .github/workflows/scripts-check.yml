@@ -1,0 +1,39 @@
+name: scripts-check
+
+# 安装器为纯 Shell 交付仓：本仓此前只有镜像同步与 release-drafter，无任何脚本门禁
+# （主仓门禁矩阵见 xadmin-server / xadmin-client / xadmin-docs）。这里守住底线——
+# 全部 *.sh 语法（bash -n）与入口脚本存在性，防「改坏一个脚本、用户装到一半失败」。
+# 无 Docker/网络依赖，秒级完成。
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  shell-syntax:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Bash syntax check (all *.sh)
+        run: |
+          set -euo pipefail
+          count=0
+          while IFS= read -r f; do
+            bash -n "$f"
+            count=$((count + 1))
+          done < <(find . -name '*.sh' -not -path './.git/*' | sort)
+          echo "checked ${count} script(s), all passed bash -n"
+
+      - name: Entry scripts present
+        run: |
+          set -euo pipefail
+          for f in xadmin.sh quick_start.sh scripts/7_upgrade.sh; do
+            test -f "$f" || { echo "missing entry script: $f"; exit 1; }
+          done
+          echo "entry scripts present"
