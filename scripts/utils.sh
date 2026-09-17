@@ -376,6 +376,9 @@ function prepare_config() {
   else
     echo_check "${CONFIG_FILE}"
   fi
+  # 权限收敛（幂等，覆盖安装/升级/配置变更三条路径）：config.txt 含 DB/Redis 密码与 SECRET_KEY
+  chmod 700 "${CONFIG_DIR}"
+  chmod 600 "${CONFIG_FILE}"
   if [[ ! -f ".env" ]]; then
     ln -s "${CONFIG_FILE}" .env
   fi
