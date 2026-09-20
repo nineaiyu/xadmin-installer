@@ -62,6 +62,13 @@ REDIS_HOST=redis
 REDIS_PORT=6379
 REDIS_PASSWORD=
 
+################################# Admin Configuration ################################
+# Initial superuser (xadmin) password. Leave empty to auto-generate a random one
+# during the first installation (it will be written back to this file, so you can
+# always look it up here). Change it after the first login.
+#
+XADMIN_ADMIN_PASSWORD=
+
 ################################# Access Configuration ################################
 # The service port provided to the outside, if it conflicts with the existing service, please modify it yourself
 #

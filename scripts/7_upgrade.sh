@@ -157,6 +157,11 @@ function db_migrations() {
       exit 1
     fi
   fi
+
+  # 升级后数据补全（种子/权限点/语言包/配置缓存，幂等）：漏做会出现「新入口 403 / 文案回退英文」
+  if ! docker exec -i xadmin-server bash -c 'python manage.py post_upgrade'; then
+    log_warn "Post-upgrade tasks failed; run manually: docker exec -i xadmin-server python manage.py post_upgrade"
+  fi
 }
 
 function clean_images() {

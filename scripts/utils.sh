@@ -514,11 +514,21 @@ function init_mariadb_tz_info() {
 }
 
 function init_default_data() {
+  # 首次安装时生成并持久化超管初始密码（回写 config.txt，供 post_install 与用户查阅）；
+  # 库中已有用户时 init_data 会跳过创建，此处密码仅作为记录。
+  local admin_password
+  admin_password=$(get_config XADMIN_ADMIN_PASSWORD)
+  if [[ -z "${admin_password}" ]]; then
+    admin_password=$(random_str 16)
+    set_config XADMIN_ADMIN_PASSWORD "${admin_password}"
+  fi
+
   create_db_ops_env
-  docker exec -i xadmin-server bash -c 'python utils/init_data.py' || {
+  docker exec -i -e XADMIN_ADMIN_PASSWORD="${admin_password}" xadmin-server bash -c 'python utils/init_data.py' || {
     log_error "Failed to import default data!"
     exit 1
   }
+  log_success "Superuser 'xadmin' initial password: ${admin_password} (saved in ${CONFIG_FILE})"
 }
 
 function perform_db_migrations() {

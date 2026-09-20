@@ -26,6 +26,7 @@ function post_install() {
   http_port=$(get_config HTTP_PORT)
   https_port=$(get_config HTTPS_PORT)
   server_name=$(get_config SERVER_NAME)
+  admin_password=$(get_config XADMIN_ADMIN_PASSWORD)
 
   echo_yellow "1. You can use the following command to start, and then visit"
   echo "cd ${PROJECT_DIR}"
@@ -44,7 +45,8 @@ function post_install() {
   else
     echo "http://${host}:${http_port}"
   fi
-  echo "Default Superuser username: $(echo_green xadmin) Default password: $(echo_red xAdminPwd!)"
+  echo "Superuser username: $(echo_green xadmin) Initial password: $(echo_red "${admin_password:-see installation output}")"
+  echo "(saved in ${CONFIG_FILE}; change it after the first login)"
   echo_yellow "\n More information"
   echo "Documentation: https://docs.dvcloud.xin/"
   echo -e "\n"
