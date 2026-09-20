@@ -21,17 +21,25 @@ $ ./xadmin.sh start
 # 重启
 $ ./xadmin.sh restart
 
-# 关闭, 不包含数据库
+# 停止并移除全部容器（含数据库容器）
 $ ./xadmin.sh stop
 
-# 关闭所有
-$ ./xadmin.sh down
+# 仅停止业务容器（保留数据库运行）
+$ ./xadmin.sh close
 
-# 备份数据库
+# 查看状态 / 日志
+$ ./xadmin.sh status
+$ ./xadmin.sh tail [服务名]
+
+# 备份 / 恢复数据库
 $ ./xadmin.sh backup_db
+$ ./xadmin.sh restore_db <备份文件>
 
-# 查看日志
-$ ./xadmin.sh tail
+# 升级（可指定版本）
+$ ./xadmin.sh upgrade [v4.x.y]
+
+# 卸载
+$ ./xadmin.sh uninstall
 
 ```
 
