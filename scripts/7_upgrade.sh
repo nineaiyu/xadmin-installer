@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# 失败即退：离线安装器不允许"半装"状态继续执行（bash >= 4.4，空数组展开需 4.4+）
+set -euo pipefail
 #
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 

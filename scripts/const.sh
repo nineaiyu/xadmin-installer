@@ -37,7 +37,7 @@ if [[ "${USE_DOCKER_MIRROR}" == "1" ]];then
 fi
 
 ARCH=$(uname -m)
-if [ -n "${BUILD_ARCH}" ]; then
+if [ -n "${BUILD_ARCH-}" ]; then
   ARCH=${BUILD_ARCH}
 fi
 

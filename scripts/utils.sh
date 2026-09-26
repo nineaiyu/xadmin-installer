@@ -591,7 +591,7 @@ function pull_image() {
   fi
 
   pull_args=""
-  case "${BUILD_ARCH}" in
+  case "${BUILD_ARCH-}" in
     "x86_64") pull_args="--platform linux/amd64" ;;
     "aarch64") pull_args="--platform linux/arm64" ;;
   esac
