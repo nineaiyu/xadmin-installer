@@ -423,6 +423,16 @@ function prepare_config() {
   chmod 644 "${CONFIG_DIR}/redis/redis.conf"
   chmod 644 "${CONFIG_DIR}/mariadb/mariadb.cnf"
 
+  # 数据目录收紧（敏感文件权限审计的可选加固项）：运行期数据（日志/上传/备份）
+  # 不做全局可读；仅调整目录位 750，不递归改文件（保留容器内既有属主/权限语义）。
+  # 幂等：安装 / 升级 / 配置三个调用路径共用 prepare_config，目录不存在时跳过
+  local volume_dir data_dir
+  volume_dir="$(get_config VOLUME_DIR)"
+  data_dir="${volume_dir}/server/data"
+  if [[ -n "${volume_dir}" && -d "${data_dir}" ]]; then
+    chmod 750 "${data_dir}"
+  fi
+
   if [[ "$(uname -m)" == "aarch64" ]]; then
     sed -i "s/# ignore-warnings ARM64-COW-BUG/ignore-warnings ARM64-COW-BUG/g" "${CONFIG_DIR}/redis/redis.conf"
   fi
