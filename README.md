@@ -79,6 +79,14 @@ bash scripts/check_images.sh --check-mapping
 > 服务端仓库（xadmin-server）的镜像版本由 renovate 覆盖（`renovate.json` 的
 > `config:recommended` 含 docker / docker-compose manager），本流程只针对本包。
 
+## deploy/web：前端托管反代栈（本地构建形态）
+
+`deploy/web/` 是自包含的前端托管 + API 反代 + acme.sh 自动签发 TLS 栈
+（自 xadmin-client 仓库迁入，第三方脚本不再混入前端源码仓）。安装器主路径使用
+预发布镜像 `nineaiyu/xadmin-web`（`compose/web.yml`）；需要 DOMAIN/EMAIL 自动
+签发证书或前端独立部署时，进 `deploy/web/` 设 `DIST_DIR` 指向前端 `dist/` 后
+`docker compose up -d --build`，用法见其 [README.md](deploy/web/README.md)。
+
 ## 配置文件说明
 
 配置文件将会放在 /opt/xadmin/config 中

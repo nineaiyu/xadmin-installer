@@ -1,0 +1,23 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: xadmin-web-local
+    container_name: xadmin-web
+    hostname: xadmin-web
+    restart: always
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      # 留空 = 纯 HTTP(80)；设置后自动 acme.sh 签发并启用 HTTPS(443)
+      DOMAIN: ${DOMAIN:-}
+      EMAIL: ${EMAIL:-}
+    volumes:
+      # 前端构建产物（xadmin-client 仓库 pnpm build 的 dist/ 目录）
+      - ${DIST_DIR:?请设置 DIST_DIR 指向前端 dist 目录，例如 ../../xadmin-client/dist}:/web/dist
+      - ./data/.acme.sh:/root/.acme.sh
+      - ./data/cert:/web/cert
+      - ./data/logs:/var/log/nginx
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
