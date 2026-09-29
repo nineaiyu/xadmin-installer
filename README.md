@@ -43,6 +43,42 @@ $ ./xadmin.sh uninstall
 
 ```
 
+## 季度镜像核对（维护流程）
+
+本包是离线安装包形态，**没有 renovate**——第三方基础镜像（`compose/*.yml` 的
+`mariadb` / `postgres` / `redis`，以及构建期的 `node` / `python` / `nginx`）版本全部手工固定，
+`utils/base-images.yml` 维护「上游镜像 → 私有仓库镜像」映射。每季度按下列三步核对一次：
+
+```bash
+# 1. 生成核对表（贴进季度记录；--online 追加 registry digest，需联网与 docker）
+bash scripts/check_images.sh
+bash scripts/check_images.sh --online
+
+# 2. 对照上游发布说明检查安全更新（Docker Hub / 上游 release note），
+#    有更新则：改 compose 固定版本 → 同步 utils/base-images.yml → 重打私有镜像 → 安装回归
+
+# 3. 映射完整性校验（发版前必须通过；缺映射 = 离线安装拉不到镜像）
+bash scripts/check_images.sh --check-mapping
+```
+
+核对记录模板（追加到季度维护记录）：
+
+```markdown
+### 镜像核对 YYYY-QN
+
+| 镜像 | 当前固定 | 上游最新 | 结论 |
+|---|---|---|---|
+| postgres:17.11 | 17.11 | 17.12 | 有安全修复 → 升级并回归 |
+| redis:7.4.11 | 7.4.11 | 7.4.11 | 无更新 |
+| mariadb:11.8.9 | 11.8.9 | 11.8.9 | 无更新 |
+
+- digest 记录：见 `scripts/check_images.sh --online` 输出
+- 回归：安装 → 升级 → `xadmin.sh status` 全 healthy → 抽测登录与列表页
+```
+
+> 服务端仓库（xadmin-server）的镜像版本由 renovate 覆盖（`renovate.json` 的
+> `config:recommended` 含 docker / docker-compose manager），本流程只针对本包。
+
 ## 配置文件说明
 
 配置文件将会放在 /opt/xadmin/config 中
