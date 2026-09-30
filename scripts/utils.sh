@@ -181,7 +181,7 @@ function get_db_images_file() {
 function get_images() {
   db_images=$(get_db_images)
   images=(
-    "redis:7.4.11"
+    "redis:8.10.2"
     "${db_images}"
   )
   for image in "${images[@]}"; do
