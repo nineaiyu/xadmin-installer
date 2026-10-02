@@ -59,8 +59,17 @@ missing=0
 rows=""
 while IFS=$'\t' read -r image source; do
     [[ -z "${image}" ]] && continue
-    upstream="docker.io/library/${image}"
-    mapped="$(mapping_for "${upstream}")"
+    # 上游键候选依次匹配：官方 library 镜像（mariadb/postgres/redis…）、
+    # Docker Hub 带命名空间的裸引（org/repo 形态）、org 与本地短名同名形态
+    # （pgvector:pg17 → docker.io/pgvector/pgvector:pg17）
+    mapped=""
+    for upstream in \
+        "docker.io/library/${image}" \
+        "docker.io/${image}" \
+        "docker.io/${image%%:*}/${image}"; do
+        mapped="$(mapping_for "${upstream}")"
+        [[ -z "${mapped}" ]] || break
+    done
     mapped="${mapped//\"/}"
     if [[ -z "${mapped}" ]]; then
         missing=$((missing + 1))

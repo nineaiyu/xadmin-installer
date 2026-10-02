@@ -68,7 +68,7 @@ bash scripts/check_images.sh --check-mapping
 
 | 镜像 | 当前固定 | 上游最新 | 结论 |
 |---|---|---|---|
-| postgres:17.11 | 17.11 | 17.12 | 有安全修复 → 升级并回归 |
+| pgvector:pg17 | pg17 | pg17.x | 2026-10 F4 起替换 postgres:17.11（知识库向量检索需 vector 扩展；上游 `docker.io/pgvector/pgvector:pg17`，同 PG17 大版本数据目录兼容） |
 | redis:8.10.2 | 8.10.2 | 8.10.2 | 2026-Q3 完成 7.4.11 → 8.10.2 评估升级（应用侧回归通过） |
 | mariadb:11.8.9 | 11.8.9 | 11.8.9 | 无更新 |
 

@@ -155,7 +155,7 @@ function get_db_info() {
       if [[ "${mariadb_data_exists}" == "1" ]]; then
         echo "mariadb:11.8.9"
       elif [[ "${postgres_data_exists}" == "1" ]]; then
-        echo "postgres:17.11"
+        echo "pgvector:pg17"
       fi
       ;;
     "file")
