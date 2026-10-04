@@ -24,10 +24,11 @@ jobs:
         run: |
           set -euo pipefail
           count=0
+          # -type f：deploy/web/acme.sh 是目录（内置 acme.sh 工具源），不匹配目录名
           while IFS= read -r f; do
             bash -n "$f"
             count=$((count + 1))
-          done < <(find . -name '*.sh' -not -path './.git/*' | sort)
+          done < <(find . -type f -name '*.sh' -not -path './.git/*' | sort)
           echo "checked ${count} script(s), all passed bash -n"
 
       - name: Entry scripts present
