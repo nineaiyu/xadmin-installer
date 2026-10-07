@@ -5,3 +5,4 @@
 "docker.io/library/python:3.14.7-slim": "registry.cn-beijing.aliyuncs.com/nineaiyu/python:3.14.7-slim"
 "docker.io/library/nginx:1.31.5-alpine": "registry.cn-beijing.aliyuncs.com/nineaiyu/nginx:1.31.5-alpine"
 "mcr.microsoft.com/playwright:v1.63.0-noble": "registry.cn-beijing.aliyuncs.com/nineaiyu/playwright:v1.63.0-noble"
+"docker.io/catthehacker/ubuntu:act-latest": "registry.cn-beijing.aliyuncs.com/nineaiyu/ubuntu:act-latest"
