@@ -541,6 +541,26 @@ function init_default_data() {
   log_success "Superuser 'xadmin' initial password: ${admin_password} (saved in ${CONFIG_FILE})"
 }
 
+# 迁移前体检（python manage.py upgrade_check 的包装）：识别旧迁移链路的库或结构漂移的库，
+# 默认中止并指引「备份 + 清库重建 + 数据回灌」（见 xadmin-server docs/ops/upgrade-stock.md）。
+# SKIP_UPGRADE_CHECK=1 显式跳过；体检命令不可用（极旧镜像）时走同一下降级询问。
+function preflight_migration_check() {
+  if [[ "${SKIP_UPGRADE_CHECK:-0}" == "1" ]]; then
+    echo "SKIP_UPGRADE_CHECK=1, skip pre-upgrade database check"
+    return 0
+  fi
+  if docker exec -i xadmin-server bash -c 'python manage.py upgrade_check' 2>/dev/null; then
+    return 0
+  fi
+  log_error "Pre-upgrade check failed: the database may come from an incompatible migration chain"
+  log_error "or have schema drift. See docs/ops/upgrade-stock.md (backup + clean rebuild)."
+  confirm="n"
+  read_from_input confirm "Run database migration anyway? (NOT recommended)" "y/n" "${confirm}"
+  if [[ "${confirm}" != "y" ]]; then
+    exit 1
+  fi
+}
+
 function perform_db_migrations() {
   db_host=$(get_config DB_HOST)
   redis_host=$(get_config REDIS_HOST)
@@ -559,6 +579,8 @@ function perform_db_migrations() {
       sleep 5s
     done
   fi
+
+  preflight_migration_check
 
   docker exec -i xadmin-server bash -c 'python manage.py migrate' || {
     log_error "Failed to change the table structure!"

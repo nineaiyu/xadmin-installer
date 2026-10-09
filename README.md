@@ -35,7 +35,8 @@ $ ./xadmin.sh tail [服务名]
 $ ./xadmin.sh backup_db
 $ ./xadmin.sh restore_db <备份文件>
 
-# 升级（可指定版本）
+# 升级（可指定版本；停服迁移前自动执行数据库升级前体检，
+#      旧迁移链路的库会被拦下并指引清库重建，SKIP_UPGRADE_CHECK=1 可跳过）
 $ ./xadmin.sh upgrade [v4.x.y]
 
 # 卸载
