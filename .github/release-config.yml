@@ -1,6 +1,12 @@
 name-template: 'v$RESOLVED_VERSION'
 tag-template: 'v$RESOLVED_VERSION'
 categories:
+  # 破坏性 / 需要人工动作的变更单独成组，避免被埋在功能列表里
+  - title: '⚠️ 升级注意 Breaking / Upgrade Notes'
+    labels:
+      - 'breaking'
+      - 'major'
+      - '升级注意'
   - title: '🌱 新功能 Features'
     labels:
       - 'feature'
@@ -23,6 +29,10 @@ categories:
     labels:
       - 'chore'
       - 'docs'
+  # 兜底分组：未打标签的变更也出现在发布说明里，避免「这次发了什么」被静默丢条目
+  - title: '📦 未分类变更'
+    labels:
+      - '*'
 exclude-labels:
   - 'no'
   - '无需处理'
@@ -41,5 +51,10 @@ version-resolver:
   default: patch
 template: |
   ## 版本变化  What’s Changed
-  
+
   $CHANGES
+
+  ## 升级提示  Upgrade Notes
+
+  - 安装器与被安装的 xadmin 平台版本一一对应（`static.env` 的 `VERSION` 由发布流程按 tag 写入）。
+  - 升级前请确认当前版本 ≥ `v4.2.5`（更早版本不支持原地升级，需清库重建 + 数据回灌）。
