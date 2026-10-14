@@ -10,7 +10,9 @@ BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 target=$1
 
 function verify_upgrade_version() {
-  required_version="v3.10.11"
+  # 原地升级基线：4.2.5 迁移链（5.0 起通过 upgrade_ledger 认领迁移账本）。
+  # 更早版本的库需「备份 + 清库重建 + 数据回灌」，见 xadmin-server docs/ops/upgrade-stock.md
+  required_version="v4.2.5"
   current_version=$(get_config CURRENT_VERSION)
 
   if ! [[ $current_version =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
@@ -24,6 +26,7 @@ function verify_upgrade_version() {
 
   if [ "$(printf '%s\n' "$required_version" "$current_version" | sort -V | head -n1)" != "$required_version" ]; then
     log_error "Your current version does not meet the minimum requirements. Please upgrade to ${required_version}"
+    log_error "Older databases cannot be upgraded in place: see xadmin-server docs/ops/upgrade-stock.md"
     exit 1
   fi
 }

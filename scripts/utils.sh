@@ -533,12 +533,25 @@ function init_default_data() {
     set_config XADMIN_ADMIN_PASSWORD "${admin_password}"
   fi
 
+  # 演示模式（可选）：WITH_DEMO_DATA=1 时灌入演示数据并创建演示账号 admin/admin123。
+  # 权限受控（挂「演示模式」角色，破坏性写操作已裁剪），适合对外体验环境；
+  # 重置：docker exec -i xadmin-server python manage.py seed_demo_all --reset
+  local init_args=""
+  if [[ "${WITH_DEMO_DATA:-0}" == "1" ]]; then
+    init_args="--with-demo"
+    log_info "WITH_DEMO_DATA=1: demo data and demo account (admin/admin123) will be created"
+  fi
+
   create_db_ops_env
-  docker exec -i -e XADMIN_ADMIN_PASSWORD="${admin_password}" xadmin-server bash -c 'python utils/init_data.py' || {
+  # shellcheck disable=SC2086
+  docker exec -i -e XADMIN_ADMIN_PASSWORD="${admin_password}" xadmin-server bash -c "python ops/init_data.py ${init_args}" || {
     log_error "Failed to import default data!"
     exit 1
   }
   log_success "Superuser 'xadmin' initial password: ${admin_password} (saved in ${CONFIG_FILE})"
+  if [[ "${WITH_DEMO_DATA:-0}" == "1" ]]; then
+    log_success "Demo account: admin / admin123 (role 'demo', destructive writes pruned)"
+  fi
 }
 
 # 迁移前体检（python manage.py upgrade_check 的包装）：识别旧迁移链路的库或结构漂移的库，
@@ -581,6 +594,12 @@ function perform_db_migrations() {
   fi
 
   preflight_migration_check
+
+  # 迁移账本认领（4.x → 5.0 迁移链合并）：删除旧链游离记录并把合并链迁移记为已应用，
+  # 不执行 DDL；全新库与已认领库为 no-op。旧镜像无该命令时告警跳过（走原有迁移路径）。
+  if ! docker exec -i xadmin-server bash -c 'python manage.py upgrade_ledger --apply'; then
+    log_warn "Migration ledger reconcile skipped/failed; continuing (see docs/ops/upgrade-stock.md)"
+  fi
 
   docker exec -i xadmin-server bash -c 'python manage.py migrate' || {
     log_error "Failed to change the table structure!"
