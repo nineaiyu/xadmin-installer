@@ -23,7 +23,9 @@
 2. **失败即退**：脚本用 `set -euo pipefail`。目标机（CentOS 7）自带 **bash 4.2**，不要用 4.4
    才支持的构造——尤其 `set -u` 下展开空数组会报 unbound，必须先判 `${#arr[@]}` 再展开。
    交互确认用 `read_from_input`，不要裸 `read`（非交互场景 stdin 已关闭，裸 `read` 会因
-   EOF + `set -e` 静默中止安装）。
+   EOF + `set -e` 静默中止安装）。**可选环境开关一律写 `${VAR:-默认值}`**（`SKIP_BACKUP_DB`
+   等裸引用会在未设置时中止升级）；**版本号入参要归一化 `v` 前缀**（镜像 tag 不含 v，
+   文档命令形态是 `./xadmin.sh upgrade v5.0.1`）。两条都有 `set-u-guard` 用例守护。
 3. **配置读写走 `get_config` / `set_config`**（写回 `config.txt`），不要在脚本里硬编码路径或密码；
    数据库/Redis 密码的权威定义处是应用的 `config.yml`，安装器侧只做透传与兜底。
 4. **镜像 tag 由 `VERSION` 决定**（`compose/*.yml` 的 `${VERSION}`）：发布时同步 `static.env`，
