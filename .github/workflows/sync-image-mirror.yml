@@ -24,6 +24,7 @@ env:
   SOURCE_REGISTRY: docker.io
   TARGET_REGISTRY: registry.cn-beijing.aliyuncs.com
   NAMESPACE: nineaiyu
+  CRANE_VERSION: v0.22.1
   # 等待源镜像出现的最长时间：构建 job 含版本校验、安全扫描与多架构构建，正常 10~20 分钟
   WAIT_TIMEOUT_SECONDS: 2400
   # 非安装器依赖镜像（docs）缺失时不必长时间等待
@@ -53,8 +54,14 @@ jobs:
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
           echo "同步版本：${VERSION}"
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Install crane
+        run: |
+          set -euo pipefail
+          # crane（go-containerregistry）按 digest 精确复制镜像，不携带构建溯源附件；
+          # buildx imagetools create 做不到（见下方「为什么不用 image-syncer / buildx」）。
+          curl -sSL "https://github.com/google/go-containerregistry/releases/download/${CRANE_VERSION}/go-containerregistry_Linux_x86_64.tar.gz" \
+            | tar xz -C /usr/local/bin crane
+          crane version
 
       - name: Login to target registry
         uses: docker/login-action@v3
@@ -70,11 +77,13 @@ jobs:
           set -euo pipefail
           status=0
 
-          # 只搬运 linux/amd64 与 linux/arm64 两个平台 manifest，并在目标仓重建 index：
-          # 源索引里的构建溯源附件是 OCI 1.1 artifact（config 为
-          # application/vnd.oci.empty.v1+json），阿里云仓不支持该 manifest class，
-          # 带上它整个 tag 的推送都会被拒（image-syncer 时代 5.0.0 即栽在这里，
-          # 且其 --os/--arch 对 OCI media 不生效，无法靠参数规避）。
+          # 为什么不用 image-syncer：它遇到源索引里的构建溯源附件（config 为
+          # application/vnd.oci.empty.v1+json 的 OCI 1.1 artifact）会因目标仓 403
+          # "unknown manifest class" 而把整个 tag 判为失败，且其 --os/--arch 对 OCI media
+          # 不生效（5.0.0 即栽在这里）。为什么不用 buildx imagetools create：它会按注解
+          # vnd.docker.reference.digest 把附件一并复制，同样失败。
+          # 因此这里按 digest 只复制 linux/amd64 与 linux/arm64 两个平台 manifest，
+          # 再用这两个 manifest 在目标仓重建 index。
           sync_image() {
             local image=$1 required=$2
             local src="${SOURCE_REGISTRY}/${NAMESPACE}/${image}:${VERSION}"
@@ -83,7 +92,7 @@ jobs:
             [[ "${required}" == "1" ]] || timeout="${OPTIONAL_WAIT_TIMEOUT_SECONDS}"
             local deadline=$(( $(date +%s) + timeout ))
 
-            until docker buildx imagetools inspect "${src}" > /dev/null 2>&1; do
+            until crane manifest "${src}" > /dev/null 2>&1; do
               if [[ "$(date +%s)" -ge "${deadline}" ]]; then
                 if [[ "${required}" == "1" ]]; then
                   echo "::error::等待源镜像超时：${src}（检查对应仓库的 Build and Push Image 是否成功）"
@@ -96,23 +105,30 @@ jobs:
               sleep "${WAIT_INTERVAL_SECONDS}"
             done
 
-            local refs
-            refs=$(docker buildx imagetools inspect --raw "${src}" \
-              | jq -r --arg src "${src}" '.manifests[]?
+            local digests
+            digests=$(crane manifest "${src}" \
+              | jq -r '.manifests[]?
                   | select(.platform.os == "linux")
                   | select(.platform.architecture == "amd64" or .platform.architecture == "arm64")
-                  | "\($src)@\(.digest)"')
-            if [[ -z "${refs}" ]]; then
+                  | .digest')
+            if [[ -z "${digests}" ]]; then
               echo "::error::${src} 没有可用的 linux/amd64 或 linux/arm64 manifest"
               return 1
             fi
 
-            echo "== ${image}：同步 $(grep -c . <<< "${refs}") 个平台 manifest"
-            xargs docker buildx imagetools create -t "${dst}" <<< "${refs}" || return 1
+            echo "== ${image}：搬运 $(grep -c . <<< "${digests}") 个平台 manifest"
+            local digest refs=()
+            for digest in ${digests}; do
+              # 按 digest 复制单个平台 manifest（保留原 digest，不带构建溯源附件）；
+              # 目标 tag 会被后续 index 覆盖，未被引用的中间 tag 不残留
+              crane copy "${src}@${digest}" "${dst}" || return 1
+              refs+=(-m "${dst}@${digest}")
+            done
+            crane index append -t "${dst}" "${refs[@]}" || return 1
 
             local platforms
-            platforms=$(docker buildx imagetools inspect "${dst}" \
-              | sed -n 's/^[[:space:]]*Platform:[[:space:]]*//p' | sort -u | tr '\n' ' ')
+            platforms=$(crane manifest "${dst}" \
+              | jq -r '.manifests[]? | "\(.platform.os)/\(.platform.architecture)"' | sort -u | tr '\n' ' ')
             echo "   ${dst} -> ${platforms}"
             for want in linux/amd64 linux/arm64; do
               if [[ "${platforms}" != *"${want}"* ]]; then
