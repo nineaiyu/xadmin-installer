@@ -58,7 +58,13 @@ function get_config() {
 function get_env_value() {
   key=$1
   default=${2-''}
-  value="${!key}"
+  value=""
+  # 变量未定义时 ${!key} 会在 set -u 下直接中止脚本（旧版本 config.txt 缺键的
+  # 升级/复用场景会命中），先判断存在性再取值；declare -p 比 [[ -v ]]（bash 4.2+）
+  # 兼容更老的 bash。
+  if declare -p "${key}" &>/dev/null; then
+    value="${!key}"
+  fi
   echo "${value}"
 }
 
@@ -205,7 +211,10 @@ function read_from_input() {
     msg="${msg} (default ${default})"
   fi
   echo -n "${msg}: "
-  read -r input
+  # 非交互安装（quick_start.sh 的 curl ... | bash、stdin 已关闭等）下 read 会因 EOF 失败，
+  # set -e 会让脚本静默中止；此处按默认值继续，保证一键安装可无人值守完成
+  input=""
+  read -r input || true
   if [[ -z "${input}" && -n "${default}" ]]; then
     export "${var}"="${default}"
   else
@@ -331,14 +340,16 @@ function get_docker_compose_cmd_line() {
 }
 
 function prepare_check_required_pkg() {
+  # 局部变量必须显式初始化：脚本以 set -u 运行，依赖齐全时 flag 不会被赋值，
+  # 直接引用 $flag 会以 "unbound variable" 中止整个安装流程
+  local flag=0
   for i in curl wget tar iptables; do
     command -v $i &>/dev/null || {
         echo_red "$i: command not found, Please install it first $i"
         flag=1
     }
   done
-  if [[ -n "$flag" ]]; then
-    unset flag
+  if [[ "${flag}" == "1" ]]; then
     echo
     exit 1
   fi
@@ -696,7 +707,13 @@ function pull_images() {
     pull_image "$image" &
     pids+=($!)
   done
-  wait ${pids[*]}
+  # 逐个 wait 且容忍失败：set -e 下 `wait ${pids[*]}` 会因最后一个拉取任务失败而直接退出，
+  # 导致 check_images 的可读失败清单（Failed to pull image ...）永远不打印
+  if [[ ${#pids[@]} -gt 0 ]]; then
+    for pid in "${pids[@]}"; do
+      wait "${pid}" || true
+    done
+  fi
 
   trap - SIGINT SIGTERM
 

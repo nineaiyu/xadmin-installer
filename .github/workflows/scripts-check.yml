@@ -38,3 +38,14 @@ jobs:
             test -f "$f" || { echo "missing entry script: $f"; exit 1; }
           done
           echo "entry scripts present"
+
+  # bash -n 只校验语法，抓不到 set -euo pipefail 下「引用未初始化变量」的运行期中止
+  # （v5.0.0 安装器曾因此在 prepare_check_required_pkg 处直接退出）。这里用桩把几条
+  # 真实调用路径跑起来，任何 unbound 中止都会让门禁变红。
+  set-u-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Runtime guard (set -u unbound variables)
+        run: bash .github/scripts/set-u-guard.sh

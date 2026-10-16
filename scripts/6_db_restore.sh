@@ -14,6 +14,8 @@ DB_HOST=$(get_config DB_HOST)
 DB_DATABASE=$(get_config DB_DATABASE)
 
 function main() {
+  # 显式初始化：脚本以 set -u 运行，数据库已在运行时 flag 不会被赋值
+  local flag=0
   echo_warn "Make sure you have a backup of data, this operation is not reversible! \n"
 
   if [[ ! -f "${DB_FILE}" ]]; then
@@ -57,9 +59,8 @@ function main() {
     log_success "Database recovered successfully!"
   fi
 
-  if [[ -n "$flag" ]]; then
+  if [[ "${flag}" == "1" ]]; then
     down_db_ops_env
-    unset flag
   fi
 }
 

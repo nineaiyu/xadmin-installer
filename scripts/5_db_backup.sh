@@ -15,6 +15,8 @@ DB_HOST=$(get_config DB_HOST)
 DB_DATABASE=$(get_config DB_DATABASE)
 
 function main() {
+  # 显式初始化：脚本以 set -u 运行，数据库已在运行时 flag 不会被赋值
+  local flag=0
   if [[ ! -d ${BACKUP_DIR} ]]; then
     mkdir -p ${BACKUP_DIR}
   fi
@@ -58,9 +60,8 @@ function main() {
     log_success "Backup succeeded! The backup file has been saved to: ${DB_FILE}"
   fi
 
-  if [[ -n "$flag" ]]; then
+  if [[ "${flag}" == "1" ]]; then
     down_db_ops_env
-    unset flag
   fi
 }
 
