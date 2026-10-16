@@ -74,6 +74,9 @@ docker compose -f compose/postgres.yml config   # 编排语法
    （`provenance: false`，GitHub 侧 attestation 不受影响）。
 3. **发版 tag 必须打在包含本工作流修复的提交上**：tag 事件运行的是 tag 所指提交里的工作流定义，
    `main` 上改过但 tag 指向旧提交时，同步仍走旧逻辑。
+4. **tag 顺序**：`server` / `client` 镜像构建成功 → `web`（依赖 client 镜像）→ `docs` →
+   本仓库 `installer`（同步要等 server/web/docs 镜像产出）。installer 放最后推；
+   同步失败用上面的 `workflow_dispatch` 补跑，不要只 rerun。
 
 失败补救：`gh workflow run sync-image-mirror.yml -R nineaiyu/xadmin-installer -f version=<版本>`
 （tag 触发的 run 不能用 rerun 修复——rerun 走的是 tag 上的旧工作流）。
