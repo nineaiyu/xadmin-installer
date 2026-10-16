@@ -1,37 +1,136 @@
 name: sync-image-mirror
 
+# 镜像发布链路里「Docker Hub → 阿里云镜像仓」这一段：
+#   1. 各仓库推 tag v* → 各自构建并把 nineaiyu/{xadmin-server,xadmin-client,xadmin-web,xadmin-docs}
+#      推到 Docker Hub（xadmin-web 的 Dockerfile 依赖 nineaiyu/xadmin-client:VERSION，链路最长）；
+#   2. 本工作流把自有镜像同步到 registry.cn-beijing.aliyuncs.com/nineaiyu/；
+#   3. 安装器运行期统一从阿里云仓拉取（scripts/utils.sh 的 pull_image 按 DOCKER_MIRROR 加前缀），
+#      同步失败 = 用户在阿里云源上装不了该版本。
 on:
   push:
     tags:
       - 'v*'
+  # 补跑入口：tag 事件与镜像构建是并发的（同步起跑时源镜像往往还没产出），而同步失败后
+  # 无法用 rerun 修复（rerun 走的是 tag 上的旧工作流），这里允许按版本号补跑任意历史 tag。
+  # 用法：gh workflow run sync-image-mirror.yml -R nineaiyu/xadmin-installer -f version=5.0.0
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '要同步的版本号（如 5.0.0，可带 v 前缀）；留空则取当前 ref 的 tag'
+        required: false
+        default: ''
 
+env:
+  SOURCE_REGISTRY: docker.io
+  TARGET_REGISTRY: registry.cn-beijing.aliyuncs.com
+  NAMESPACE: nineaiyu
+  # 等待源镜像出现的最长时间：构建 job 含版本校验、安全扫描与多架构构建，正常 10~20 分钟
+  WAIT_TIMEOUT_SECONDS: 2400
+  # 非安装器依赖镜像（docs）缺失时不必长时间等待
+  OPTIONAL_WAIT_TIMEOUT_SECONDS: 300
+  WAIT_INTERVAL_SECONDS: 30
+  # 安装器运行期真正依赖的镜像（缺任一都装不起来）；docs 只做镜像分发，缺失不阻断同步
+  REQUIRED_IMAGES: xadmin-server xadmin-web
+  OPTIONAL_IMAGES: xadmin-docs
 
 jobs:
   sync_to_target_registry:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: prepare
+      - name: Resolve version
+        id: version
         run: |
-          wget -q  https://github.com/AliyunContainerService/image-syncer/releases/download/v1.5.5/image-syncer-v1.5.5-linux-amd64.tar.gz
-          tar zxf image-syncer-v1.5.5-linux-amd64.tar.gz
-          mv image-syncer /usr/local/bin/
+          set -euo pipefail
+          VERSION="${{ inputs.version }}"
+          if [[ -z "${VERSION}" ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          VERSION="${VERSION#v}"
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "::error::无法确定版本号：'${VERSION}'（workflow_dispatch 请在 version 输入指定，如 5.0.0）"
+            exit 1
+          fi
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "同步版本：${VERSION}"
 
-      - name: start sync
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to target registry
+        uses: docker/login-action@v3
+        with:
+          registry: registry.cn-beijing.aliyuncs.com
+          username: ${{ secrets.ALIYUN_REGISTRY_USER }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+
+      - name: Sync images
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          TAG=$(basename ${GITHUB_REF})
-          VERSION=${TAG/v/}
-          cat <<EOF > auth.yml
-          registry.cn-beijing.aliyuncs.com:
-              username: ${{ secrets.ALIYUN_REGISTRY_USER }}
-              password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
-          EOF
+          set -euo pipefail
+          status=0
 
-          cat <<EOF > images.yml
-          "docker.io/nineaiyu/xadmin-server:${VERSION}": "registry.cn-beijing.aliyuncs.com/nineaiyu/xadmin-server:${VERSION}"
-          "docker.io/nineaiyu/xadmin-web:${VERSION}": "registry.cn-beijing.aliyuncs.com/nineaiyu/xadmin-web:${VERSION}"
-          "docker.io/nineaiyu/xadmin-docs:${VERSION}": "registry.cn-beijing.aliyuncs.com/nineaiyu/xadmin-docs:${VERSION}"
-          EOF
-          image-syncer  --auth=./auth.yml --images=./images.yml
+          # 只搬运 linux/amd64 与 linux/arm64 两个平台 manifest，并在目标仓重建 index：
+          # 源索引里的构建溯源附件是 OCI 1.1 artifact（config 为
+          # application/vnd.oci.empty.v1+json），阿里云仓不支持该 manifest class，
+          # 带上它整个 tag 的推送都会被拒（image-syncer 时代 5.0.0 即栽在这里，
+          # 且其 --os/--arch 对 OCI media 不生效，无法靠参数规避）。
+          sync_image() {
+            local image=$1 required=$2
+            local src="${SOURCE_REGISTRY}/${NAMESPACE}/${image}:${VERSION}"
+            local dst="${TARGET_REGISTRY}/${NAMESPACE}/${image}:${VERSION}"
+            local timeout="${WAIT_TIMEOUT_SECONDS}"
+            [[ "${required}" == "1" ]] || timeout="${OPTIONAL_WAIT_TIMEOUT_SECONDS}"
+            local deadline=$(( $(date +%s) + timeout ))
+
+            until docker buildx imagetools inspect "${src}" > /dev/null 2>&1; do
+              if [[ "$(date +%s)" -ge "${deadline}" ]]; then
+                if [[ "${required}" == "1" ]]; then
+                  echo "::error::等待源镜像超时：${src}（检查对应仓库的 Build and Push Image 是否成功）"
+                  return 1
+                fi
+                echo "::warning::跳过 ${src}：等待超时（非安装器依赖镜像）"
+                return 0
+              fi
+              echo "等待源镜像：${src}"
+              sleep "${WAIT_INTERVAL_SECONDS}"
+            done
+
+            local refs
+            refs=$(docker buildx imagetools inspect --raw "${src}" \
+              | jq -r --arg src "${src}" '.manifests[]?
+                  | select(.platform.os == "linux")
+                  | select(.platform.architecture == "amd64" or .platform.architecture == "arm64")
+                  | "\($src)@\(.digest)"')
+            if [[ -z "${refs}" ]]; then
+              echo "::error::${src} 没有可用的 linux/amd64 或 linux/arm64 manifest"
+              return 1
+            fi
+
+            echo "== ${image}：同步 $(grep -c . <<< "${refs}") 个平台 manifest"
+            xargs docker buildx imagetools create -t "${dst}" <<< "${refs}" || return 1
+
+            local platforms
+            platforms=$(docker buildx imagetools inspect "${dst}" \
+              | sed -n 's/^[[:space:]]*Platform:[[:space:]]*//p' | sort -u | tr '\n' ' ')
+            echo "   ${dst} -> ${platforms}"
+            for want in linux/amd64 linux/arm64; do
+              if [[ "${platforms}" != *"${want}"* ]]; then
+                echo "::error::${dst} 缺少平台 ${want}（实际：${platforms}）"
+                return 1
+              fi
+            done
+          }
+
+          for image in ${REQUIRED_IMAGES}; do
+            sync_image "${image}" 1 || status=1
+          done
+          for image in ${OPTIONAL_IMAGES}; do
+            sync_image "${image}" 0 || status=1
+          done
+
+          if [[ "${status}" != "0" ]]; then
+            echo "::error::镜像同步存在失败项，见上方日志"
+            exit 1
+          fi
+          echo "镜像同步完成：${VERSION}"

@@ -45,3 +45,25 @@ docker compose -f compose/postgres.yml config   # 编排语法
 
 真实流程验证（起一台干净机器或本地 docker）走 `install` / `upgrade` 全流程；
 无环境时至少说明「未做端到端验证」的边界，不要声称已验证。
+
+## 四、发布与镜像同步（本仓库是镜像链路的末端）
+
+链路：各仓库推 tag `v*` → 分别构建并推 Docker Hub（`xadmin-web` 的 Dockerfile 依赖
+`nineaiyu/xadmin-client:VERSION`，链路最长）→ 本仓库 `sync-image-mirror.yml` 同步到阿里云仓
+→ 安装器运行期统一从阿里云仓拉取（`utils.sh` 的 `pull_image` 按 `DOCKER_IMAGE_MIRROR` 加前缀），
+自有镜像缺任一 tag 都装不起来。
+
+三条硬约束：
+
+1. **同步必须等源镜像**：同批 tag 推送时同步会先起跑，工作流内置「等待源镜像出现」的有界轮询，
+   不要改回「一次性失败退出」。
+2. **带构建溯源附件的 index 推不进阿里云**：附件（`config.mediaType` 为
+   `application/vnd.oci.empty.v1+json` 的 OCI 1.1 artifact）会被目标仓拒（"unknown manifest class"），
+   且 image-syncer 时代一个子 manifest 失败即整 tag 判败。故同步只挑 `linux/amd64` /
+   `linux/arm64` 两个平台 manifest 重建 index；构建侧同时关闭 registry 内溯源附件
+   （`provenance: false`，GitHub 侧 attestation 不受影响）。
+3. **发版 tag 必须打在包含本工作流修复的提交上**：tag 事件运行的是 tag 所指提交里的工作流定义，
+   `main` 上改过但 tag 指向旧提交时，同步仍走旧逻辑。
+
+失败补救：`gh workflow run sync-image-mirror.yml -R nineaiyu/xadmin-installer -f version=<版本>`
+（tag 触发的 run 不能用 rerun 修复——rerun 走的是 tag 上的旧工作流）。
