@@ -151,4 +151,24 @@ PATH="${tmp}/bin-nodocker:${PATH}" "${BASH_BIN}" -c "set -u; source '${work}/scr
   fail "ensure_data_dir_owner 中止"
 }
 
+# ---- 10. upgrade 目标版本归一化（文档形态带 v 前缀；镜像 tag 不含 v）----
+out=$("${BASH_BIN}" -c "set -u; set -- v5.0.1; source '${work}/scripts/7_upgrade.sh'; printf %s \"\${target}\"")
+[[ "${out}" == "5.0.1" ]] || fail "upgrade 目标未归一化 v 前缀（得到 '${out}'）"
+
+# ---- 11. 升级基线门禁：低于 4.2.5 阻断，带 v 前缀的当前版本可通过 ----
+baseline_case() {
+  sed -i "s/^CURRENT_VERSION=.*/CURRENT_VERSION=$1/" "${work}/cfg/config.txt"
+  "${BASH_BIN}" -c "set -u; set -- ''; source '${work}/scripts/7_upgrade.sh'; verify_upgrade_version" > /dev/null 2>&1
+}
+baseline_case 4.2.4 && fail "当前版本 4.2.4 应被升级基线门禁阻断" || true
+baseline_case v4.2.5 || fail "当前版本 v4.2.5（带 v 前缀）应通过基线门禁"
+baseline_case 5.0.1 || fail "当前版本 5.0.1 应通过基线门禁"
+
+# ---- 12. 备份开关未设置时不得中止（SKIP_BACKUP_DB 必须带 :- 默认值）----
+# 走真实备份脚本（docker 桩见第 5 项），对应 upgrade 的「3. Backup database」步骤
+if ! PATH="${tmp}:${PATH}" "${BASH_BIN}" -c "set -u; set -- ''; source '${work}/scripts/7_upgrade.sh'; backup_db" >"${tmp}/out12" 2>&1; then
+  cat "${tmp}/out12"
+  fail "backup_db 在 SKIP_BACKUP_DB 未设置时中止（可选开关缺 :- 默认值？）"
+fi
+
 echo "set -u runtime guard passed"

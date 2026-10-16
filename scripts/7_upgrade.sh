@@ -9,20 +9,28 @@ BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 . "${BASE_DIR}/2_install_docker.sh"
 
 target=$1
+# 版本号归一化：文档形态是 `./xadmin.sh upgrade v5.0.1`，而镜像 tag 不含 v 前缀
+# （`nineaiyu/xadmin-server:5.0.1`）。不归一化会去拉 `xadmin-server:v5.0.1` 并以
+# manifest unknown 失败（实测）。
+target="${target#[vV]}"
 
 function verify_upgrade_version() {
   # 原地升级基线：4.2.5 迁移链（5.0 起通过 upgrade_ledger 认领迁移账本）。
   # 更早版本的库需「备份 + 清库重建 + 数据回灌」，见 xadmin-server docs/ops/upgrade-stock.md
-  required_version="v4.2.5"
+  required_version="4.2.5"
   current_version=$(get_config CURRENT_VERSION)
-
-  if ! [[ $current_version =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-    return
-  fi
+  # 两侧都归一化 v 前缀：CURRENT_VERSION 由 set_current_version 写入（不带 v），
+  # 早期写法用 ^v 匹配会让本函数恒早退（门禁形同不存在）
+  current_version="${current_version#[vV]}"
 
   if [[ -z "${current_version}" ]]; then
     log_error "The current version is not detected, please check"
     exit 1
+  fi
+
+  if ! [[ "${current_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+    log_warn "当前版本号 '${current_version}' 非 x.y.z 形态，跳过升级基线校验"
+    return
   fi
 
   if [ "$(printf '%s\n' "$required_version" "$current_version" | sort -V | head -n1)" != "$required_version" ]; then
@@ -128,7 +136,9 @@ function backup_config() {
 }
 
 function backup_db() {
-  if [[ "${SKIP_BACKUP_DB}" != "1" ]]; then
+  # 可选环境开关必须带默认值：脚本以 set -u 运行，未设置时直接引用会中止升级
+  # （实测：`./xadmin.sh upgrade 5.0.1` 走到「3. Backup database」即 unbound 退出）
+  if [[ "${SKIP_BACKUP_DB:-0}" != "1" ]]; then
     if ! bash "${SCRIPT_DIR}/5_db_backup.sh"; then
       confirm="n"
       read_from_input confirm "Failed to backup the database. Continue to upgrade?" "y/n" "${confirm}"
@@ -137,7 +147,7 @@ function backup_db() {
       fi
     fi
   else
-    echo "SKIP_BACKUP_DB=${SKIP_BACKUP_DB}, Skip database backup"
+    echo "SKIP_BACKUP_DB=${SKIP_BACKUP_DB:-0}, Skip database backup"
   fi
 }
 
@@ -207,7 +217,7 @@ function upgrade_docker() {
 }
 
 function upgrade_compose() {
-  if check_root && [[ -f "/usr/local/libexec/docker/cli-plugins/docker-compose" || -f "$HOME/.docker/cli-plugins/docker-compose" ]]; then
+  if check_root && [[ -f "/usr/local/libexec/docker/cli-plugins/docker-compose" || -f "${HOME:-/root}/.docker/cli-plugins/docker-compose" ]]; then
     if ! docker compose version | grep ${DOCKER_COMPOSE_VERSION} &>/dev/null; then
       echo
       echo -e "$(docker compose version) \033[33m-->\033[0m Docker Compose version \033[32m${DOCKER_COMPOSE_VERSION}\033[0m"
