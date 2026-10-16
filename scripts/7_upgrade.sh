@@ -15,8 +15,9 @@ target=$1
 target="${target#[vV]}"
 
 function verify_upgrade_version() {
-  # 原地升级基线：4.2.5 迁移链（5.0 起通过 upgrade_ledger 认领迁移账本）。
-  # 更早版本的库需「备份 + 清库重建 + 数据回灌」，见 xadmin-server docs/ops/upgrade-stock.md
+  # 版本门槛：低于 4.2.5 的库不在原地升级范围内，需「备份 + 清库重建 + 数据回灌」。
+  # 版本号达标不等于结构达标——库结构是否等价由前置体检判定（legacy-chain-pre-split 表示库仍停留在
+  # 按域分表之前，同样要走重建 + 回灌），见 xadmin-server docs/ops/upgrade-stock.md
   required_version="4.2.5"
   current_version=$(get_config CURRENT_VERSION)
   # 两侧都归一化 v 前缀：CURRENT_VERSION 由 set_current_version 写入（不带 v），
@@ -158,8 +159,13 @@ function db_migrations() {
     if [[ "${confirm}" == "y" ]]; then
       echo
       cd "${PROJECT_DIR}" || exit 1
+      # 停服会删除容器：先记下运行中的 PG 镜像，供大版本数据目录迁移用作导出源（如 4.x 的 PG16）
+      OLD_PG_IMAGE=$(docker inspect -f '{{.Config.Image}}' xadmin-postgresql 2> /dev/null || true)
+      export OLD_PG_IMAGE
       bash ./xadmin.sh stop
       sleep 2s
+      # 大版本（pg16 → pg17）的数据目录不兼容：先导出 → 新目录初始化 → 恢复，再走迁移
+      ensure_pg_data_version
       echo
     else
       exit 1

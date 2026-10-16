@@ -688,11 +688,126 @@ function preflight_migration_check() {
   fi
   log_error "Pre-upgrade check failed: the database may come from an incompatible migration chain"
   log_error "or have schema drift. See docs/ops/upgrade-stock.md (backup + clean rebuild)."
+  log_error "Databases created before the domain split (tables named system_userinfo / system_uploadfile)"
+  log_error "cannot be upgraded in place: clean rebuild then re-import with"
+  log_error "  python manage.py legacy_export --output /tmp/xadmin-legacy   (on the old version)"
+  log_error "  python manage.py legacy_import --input /tmp/xadmin-legacy   (on the new version)"
   confirm="n"
   read_from_input confirm "Run database migration anyway? (NOT recommended)" "y/n" "${confirm}"
   if [[ "${confirm}" != "y" ]]; then
     exit 1
   fi
+}
+
+# PostgreSQL 数据目录主版本（如 16 / 17）。
+function pg_data_major_version() {
+  local volume_dir version_file
+  volume_dir=$(get_config VOLUME_DIR)
+  version_file="${volume_dir}/postgresql/data/PG_VERSION"
+  if [[ -f "${version_file}" ]]; then
+    tr -d "[:space:]" < "${version_file}"
+  fi
+}
+
+# 目标 PG 镜像名：compose/postgres.yml 的镜像行（本地 tag 形态，拉取阶段已打本地名）。
+function pg_image_name() {
+  grep -E "^[[:space:]]*image:" "${PROJECT_DIR}/compose/postgres.yml" 2> /dev/null |
+    head -n 1 | awk '{print $2}'
+}
+
+# 目标 PG 镜像主版本：从镜像 tag 解析（pgvector:pg17 → 17）。
+function pg_image_major_version() {
+  local image
+  image=$(pg_image_name)
+  if [[ -z "${image}" ]]; then
+    return 0
+  fi
+  printf '%s' "${image}" | grep -oE "pg[0-9]+" | head -n 1 | tr -d "pg"
+}
+
+# PostgreSQL 大版本迁移：数据目录版本低于目标镜像主版本时（4.x 的 PG16 → 5.0 的 PG17），
+# 用旧镜像导出逻辑备份、让新镜像在新目录初始化、再恢复数据——大版本的数据目录不兼容，
+# 直接换镜像启动会循环重启（server / worker 因依赖 PG 健康也起不来）。
+# 前置：容器已停；OLD_PG_IMAGE 为升级前运行中的 PG 镜像（由升级流程在停服前记录）。
+# 开关 SKIP_PG_DATA_MIGRATION=1 跳过；无法判定版本（目录不存在/镜像 tag 无 pgNN）时直接返回。
+function ensure_pg_data_version() {
+  local volume_dir data_version image_version dump_file timestamp
+  if [[ "${SKIP_PG_DATA_MIGRATION:-0}" == "1" ]]; then
+    echo "SKIP_PG_DATA_MIGRATION=1, skip PostgreSQL data directory migration"
+    return 0
+  fi
+  volume_dir=$(get_config VOLUME_DIR)
+  data_version=$(pg_data_major_version)
+  image_version=$(pg_image_major_version)
+  if [[ -z "${data_version}" || -z "${image_version}" || "${data_version}" == "${image_version}" ]]; then
+    return 0
+  fi
+  if [[ "${data_version}" -gt "${image_version}" ]]; then
+    log_error "PostgreSQL data directory is version ${data_version}, newer than the target image (pg${image_version})."
+    log_error "Downgrade is not supported; restore a backup taken on the matching major version."
+    exit 1
+  fi
+  if [[ -z "${OLD_PG_IMAGE:-}" ]]; then
+    log_error "Cannot determine the running PostgreSQL image; set OLD_PG_IMAGE (e.g. registry.../postgres:16.8)"
+    exit 1
+  fi
+
+  local db_user db_password db_name
+  db_user=$(get_config DB_USER)
+  db_password=$(get_config DB_PASSWORD)
+  db_name=$(get_config DB_DATABASE)
+  dump_file="${volume_dir}/db_backup/pg${data_version}-to-pg${image_version}-$(date +%F_%T).dump"
+  timestamp=$(date +%F_%T)
+
+  echo "PostgreSQL major version migration: ${data_version} -> ${image_version}"
+  mkdir -p "$(dirname "${dump_file}")"
+
+  echo "  - exporting logical backup with ${OLD_PG_IMAGE}"
+  docker rm -f xadmin-pg-migrate &> /dev/null
+  docker run -d --name xadmin-pg-migrate -e POSTGRES_PASSWORD="${db_password}" \
+    -v "${volume_dir}/postgresql/data:/var/lib/postgresql/data" "${OLD_PG_IMAGE}" > /dev/null || {
+    log_error "Failed to start the source PostgreSQL container for export"
+    exit 1
+  }
+  local i
+  for i in $(seq 1 30); do
+    docker exec xadmin-pg-migrate pg_isready -q -U "${db_user}" &> /dev/null && break
+    sleep 2s
+  done
+  if ! docker exec xadmin-pg-migrate pg_dump -U "${db_user}" -d "${db_name}" -Fc > "${dump_file}"; then
+    log_error "pg_dump failed; the data directory is untouched"
+    docker rm -f xadmin-pg-migrate &> /dev/null
+    exit 1
+  fi
+  docker rm -f xadmin-pg-migrate &> /dev/null
+  echo "  - backup written to ${dump_file}"
+
+  echo "  - archiving old data directory and initializing pg${image_version}"
+  mv "${volume_dir}/postgresql/data" "${volume_dir}/postgresql/data.pg${data_version}-${timestamp}"
+  mkdir -p "${volume_dir}/postgresql/data"
+  docker rm -f xadmin-pg-restore &> /dev/null
+  docker run -d --name xadmin-pg-restore -e POSTGRES_DB="${db_name}" -e POSTGRES_USER="${db_user}" \
+    -e POSTGRES_PASSWORD="${db_password}" \
+    -v "${volume_dir}/postgresql/data:/var/lib/postgresql/data" \
+    "$(pg_image_name)" > /dev/null || {
+    log_error "Failed to initialize the pg${image_version} data directory"
+    exit 1
+  }
+  for i in $(seq 1 45); do
+    docker exec xadmin-pg-restore pg_isready -q -U "${db_user}" &> /dev/null && break
+    sleep 2s
+  done
+  echo "  - restoring data"
+  if ! docker exec -i xadmin-pg-restore pg_restore -U "${db_user}" -d "${db_name}" --no-owner --no-acl \
+    < "${dump_file}"; then
+    log_warn "pg_restore reported non-fatal warnings; verify the row counts below"
+  fi
+  echo -n "  - restored migrations/users: "
+  docker exec xadmin-pg-restore psql -U "${db_user}" -d "${db_name}" -tAc \
+    "select count(*) from django_migrations" | tr -d "[:space:]"
+  docker rm -f xadmin-pg-restore &> /dev/null
+  echo "  - PostgreSQL data directory is now pg${image_version}"
+  echo "    (old directory kept at ${volume_dir}/postgresql/data.pg${data_version}-${timestamp})"
 }
 
 function perform_db_migrations() {
