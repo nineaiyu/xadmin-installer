@@ -101,7 +101,11 @@ function set_config() {
     return
   fi
 
-  sed -i "s,^[ \t]*${key}=.*$,${key}=${value},g" "${CONFIG_FILE}"
+  # 替换串先转义、分隔符用 |：配置值可能含逗号（如 ALLOWED_HOSTS 的 JSON 数组
+  # ["192.168.0.1","127.0.0.1"]）与 & \ | 等 sed 元字符，沿用 `,` 分隔会被 sed 判为非法
+  local escaped
+  escaped=$(printf '%s' "${value}" | sed 's/[\\&|]/\\&/g')
+  sed -i "s|^[ \t]*${key}=.*$|${key}=${escaped}|g" "${CONFIG_FILE}"
 }
 
 function disable_config() {
@@ -287,7 +291,8 @@ function log_error() {
 }
 
 function get_docker_compose_services() {
-  ignore_db="$1"
+  # 可选参数：show_services / close 等调用点不传参
+  ignore_db="${1-}"
   db_engine=$(get_config DB_ENGINE "mysql")
   db_host=$(get_config DB_HOST)
   redis_host=$(get_config REDIS_HOST)
@@ -315,7 +320,8 @@ function get_docker_compose_services() {
 }
 
 function get_docker_compose_cmd_line() {
-  ignore_db="$1"
+  # ${1-}：本函数由 xadmin.sh 无参调用，set -u 下直接取 $1 会中止
+  ignore_db="${1-}"
   https_port=$(get_config HTTPS_PORT)
   db_images_file=$(get_db_images_file)
   cmd="docker compose -f compose/network.yml"
@@ -447,6 +453,48 @@ function prepare_config() {
   if [[ "$(uname -m)" == "aarch64" ]]; then
     sed -i "s/# ignore-warnings ARM64-COW-BUG/ignore-warnings ARM64-COW-BUG/g" "${CONFIG_DIR}/redis/redis.conf"
   fi
+
+  ensure_allowed_hosts
+}
+
+# 服务端 5.0 起在 DEBUG=false 时强制要求 Host 白名单，缺失会直接拒绝启动
+# （容器起不来 → 安装中断在「Init xAdmin Database」，或升级后容器反复重启），
+# 且 4.2.x 的旧配置没有该键，升级路径同样要补。安装/升级/配置三条路径共用
+# prepare_config，故在此按本机 IP + 回环 + DOMAINS 推导；已配置则不覆盖（幂等）。
+function ensure_allowed_hosts() {
+  local allowed_hosts host entry
+  allowed_hosts=$(get_config ALLOWED_HOSTS)
+  if [[ -n "${allowed_hosts}" ]]; then
+    return
+  fi
+
+  local hosts=()
+  host=$(get_host_ip)
+  if [[ -n "${host}" ]]; then
+    hosts+=("${host}")
+  fi
+  hosts+=("127.0.0.1" "localhost")
+
+  # DOMAINS 是外部访问地址（逗号分隔、可能带端口），去掉端口并入白名单。
+  # 先判数组长度再展开：set -u 下展开空数组在 bash 4.2/4.3（CentOS 7 自带）会报
+  # "unbound variable"
+  local _domains=()
+  IFS=',' read -r -a _domains <<<"$(get_config DOMAINS)"
+  if [[ ${#_domains[@]} -gt 0 ]]; then
+    for entry in "${_domains[@]}"; do
+      entry="${entry// /}"
+      if [[ -z "${entry}" ]]; then
+        continue
+      fi
+      hosts+=("${entry%%:*}")
+    done
+  fi
+
+  # 必须是 JSON 数组：服务端按 json.loads 解析，非 JSON 值会原样当字符串返回，
+  # Django 侧逐字符匹配 Host → 全站 400
+  allowed_hosts="[$(printf '%s\n' "${hosts[@]}" | awk '!seen[$0]++' | sed 's/^/"/; s/$/"/' | paste -sd, -)]"
+  set_config ALLOWED_HOSTS "${allowed_hosts}"
+  echo "ALLOWED_HOSTS= ${allowed_hosts}（按本机 IP / 回环 / DOMAINS 推导，可在 ${CONFIG_FILE} 调整）"
 }
 
 function echo_logo() {
@@ -507,7 +555,44 @@ function get_db_migrate_compose_cmd() {
   echo "$cmd"
 }
 
+# 数据目录属主修正：5.0 起镜像声明 `USER 1001`（4.2.x 为 root），而镜像里预建并
+# chown 的 /data/xadmin-server/data 会被 compose 的 bind 挂载遮蔽 —— 宿主目录由 docker
+# 以 root 创建，应用（uid 1001）无权在其中创建 logs/uploads，安装/升级会中断在
+# 「Init xAdmin Database」（PermissionError）。属主按镜像声明的运行用户推导，取不到镜像
+# 时回落 1001:1001（与镜像 Dockerfile 的 USER 一致；对 root 运行的旧镜像无副作用）。
+function ensure_data_dir_owner() {
+  local volume_dir data_dir app_user image current_owner
+  volume_dir="$(get_config VOLUME_DIR)"
+  if [[ -z "${volume_dir}" ]]; then
+    return
+  fi
+  data_dir="${volume_dir}/server/data"
+  mkdir -p "${data_dir}"
+
+  app_user=""
+  for image in "nineaiyu/xadmin-server:$(get_current_version)" "nineaiyu/xadmin-server:${VERSION}"; do
+    if docker image inspect "${image}" > /dev/null 2>&1; then
+      app_user=$(docker image inspect -f '{{.Config.User}}' "${image}")
+      [[ -z "${app_user}" ]] || break
+    fi
+  done
+  if [[ -z "${app_user}" ]]; then
+    app_user="1001"
+  fi
+  if [[ "${app_user}" != *:* ]]; then
+    app_user="${app_user}:${app_user}"
+  fi
+
+  # 仅在属主不一致时递归调整（数据目录可能很大，install/upgrade 期间重复调用要避免全量遍历）
+  current_owner=$(stat -c '%u:%g' "${data_dir}" 2> /dev/null || true)
+  if [[ "${current_owner}" != "${app_user}" ]]; then
+    chown -R "${app_user}" "${data_dir}" || log_warn "调整 ${data_dir} 属主为 ${app_user} 失败，容器可能无法写入"
+  fi
+  chmod 750 "${data_dir}"
+}
+
 function create_db_ops_env() {
+  ensure_data_dir_owner
   cmd=$(get_db_migrate_compose_cmd)
   ${cmd} up -d || {
     exit 1
@@ -565,6 +650,31 @@ function init_default_data() {
   fi
 }
 
+# 全新库判定（无任何业务表 = 首次安装）：升级前体检面向存量库，空库「缺表」会被
+# upgrade_check 判成 schema-drift（5.0.0 镜像的既有行为），首次安装因此被拦下。
+# 只读查询；库不可达或查询失败时返回「非空」（保守：照旧走体检）。
+function is_fresh_database() {
+  local db_host db_name tables sql
+  db_host=$(get_config DB_HOST)
+  db_name=$(get_config DB_DATABASE)
+  case "${db_host}" in
+    postgresql)
+      sql="select count(*) from information_schema.tables where table_schema not in ('pg_catalog','information_schema');"
+      tables=$(printf '%s\n' "${sql}" |
+        docker exec -i xadmin-postgresql sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -tA' 2> /dev/null || true)
+      ;;
+    mysql)
+      sql="select count(*) from information_schema.tables where table_schema = '${db_name}';"
+      tables=$(printf '%s\n' "${sql}" |
+        docker exec -i xadmin-mysql sh -c 'mariadb -uroot -p"$MARIADB_ROOT_PASSWORD" -N -B' 2> /dev/null || true)
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+  [[ "${tables//[[:space:]]/}" == "0" ]]
+}
+
 # 迁移前体检（python manage.py upgrade_check 的包装）：识别旧迁移链路的库或结构漂移的库，
 # 默认中止并指引「备份 + 清库重建 + 数据回灌」（见 xadmin-server docs/ops/upgrade-stock.md）。
 # SKIP_UPGRADE_CHECK=1 显式跳过；体检命令不可用（极旧镜像）时走同一下降级询问。
@@ -604,7 +714,11 @@ function perform_db_migrations() {
     done
   fi
 
-  preflight_migration_check
+  if is_fresh_database; then
+    echo "检测到全新数据库（无业务表），跳过升级前体检"
+  else
+    preflight_migration_check
+  fi
 
   # 迁移账本认领（4.x → 5.0 迁移链合并）：删除旧链游离记录并把合并链迁移记为已应用，
   # 不执行 DDL；全新库与已认领库为 no-op。旧镜像无该命令时告警跳过（走原有迁移路径）。

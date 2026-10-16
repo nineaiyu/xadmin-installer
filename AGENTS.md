@@ -20,8 +20,10 @@
 
 1. **所有 `*.sh` 必须过 `bash -n`**（CI `scripts-check.yml` 逐文件校验 + 入口脚本存在性）。
    本地自查：`for f in $(find . -name '*.sh' -type f); do bash -n "$f" || echo "FAIL $f"; done`
-2. **失败即退**：脚本用 `set -euo pipefail`（bash ≥ 4.4）；交互确认用 `read_from_input`，
-   不要裸 `read`。
+2. **失败即退**：脚本用 `set -euo pipefail`。目标机（CentOS 7）自带 **bash 4.2**，不要用 4.4
+   才支持的构造——尤其 `set -u` 下展开空数组会报 unbound，必须先判 `${#arr[@]}` 再展开。
+   交互确认用 `read_from_input`，不要裸 `read`（非交互场景 stdin 已关闭，裸 `read` 会因
+   EOF + `set -e` 静默中止安装）。
 3. **配置读写走 `get_config` / `set_config`**（写回 `config.txt`），不要在脚本里硬编码路径或密码；
    数据库/Redis 密码的权威定义处是应用的 `config.yml`，安装器侧只做透传与兜底。
 4. **镜像 tag 由 `VERSION` 决定**（`compose/*.yml` 的 `${VERSION}`）：发布时同步 `static.env`，
@@ -34,6 +36,14 @@
 7. **演示模式**：`WITH_DEMO_DATA=1` 时 `init_default_data` 追加 `--with-demo`（演示账号
    `admin/admin123`），生产默认不启用。
 8. **新增命令要三处一致**：`xadmin.sh` 的 case 分支、`usage` 帮助文本、`README.md` 命令表。
+9. **配置要满足服务端 fail-fast 校验**：`SECRET_KEY` 由 `set_secret_key` 生成；`ALLOWED_HOSTS`
+   由 `prepare_config` 调 `ensure_allowed_hosts` 推导（服务端 5.0 起 `DEBUG=false` 时必须配置，
+   缺失即拒绝启动；4.2.x 旧配置没有该键，升级路径同样依赖它）。`set_config` 的替换已做 sed
+   转义，值里可以出现逗号/引号（JSON 数组）等字符。
+10. **运行期约束（5.0 起）**：应用镜像以 `USER 1001` 运行（4.2.x 为 root），`${VOLUME_DIR}/server/data`
+    必须归该用户，由 `ensure_data_dir_owner`（`create_db_ops_env` 内调用）保证；容器健康检查脚本
+    在镜像的 `ops/`（不是 `utils/`）；全新库由 `is_fresh_database` 判定后跳过升级前体检
+    （`upgrade_check` 面向存量库，空库缺表会被判 schema-drift）。
 
 ## 三、验证
 

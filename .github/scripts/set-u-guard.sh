@@ -113,4 +113,42 @@ if ! PATH="${tmp}:${PATH}" bash "${work}/scripts/6_db_restore.sh" "${tmp}/guard.
   fail "恢复脚本在「数据库已在运行」路径中止（flag 未初始化？）"
 fi
 
+# ---- 6. 无参调用 compose 命令行/服务列表函数不得中止（xadmin.sh 的 start/stop/status 路径）----
+for fn in get_docker_compose_cmd_line get_docker_compose_services; do
+  out=$("${BASH_BIN}" -c "set -u; source '${work}/scripts/utils.sh'; ${fn}" 2>&1) || {
+    echo "${out}"
+    fail "${fn} 无参调用中止（\$1 未绑定？）"
+  }
+  [[ -n "${out}" ]] || fail "${fn} 无参调用没有输出"
+done
+
+# ---- 7. ALLOWED_HOSTS 推导：值必须是服务端可 json.loads 的数组 ----
+"${BASH_BIN}" -c "set -u; source '${work}/scripts/utils.sh'; ensure_allowed_hosts > /dev/null" >"${tmp}/out7" 2>&1 || {
+  cat "${tmp}/out7"
+  fail "ensure_allowed_hosts 中止（空数组展开？）"
+}
+allowed_hosts=$("${BASH_BIN}" -c "source '${work}/scripts/utils.sh'; get_config ALLOWED_HOSTS")
+if command -v jq > /dev/null 2>&1; then
+  printf '%s' "${allowed_hosts}" | jq -e 'type == "array" and length > 0' > /dev/null ||
+    fail "ALLOWED_HOSTS 不是合法 JSON 数组：'${allowed_hosts}'"
+else
+  # 无 jq 的环境（如 CentOS 7 目标机）退化为结构检查
+  [[ "${allowed_hosts}" =~ ^\[\"[^\"]+\"(,\"[^\"]+\")*\]$ ]] ||
+    fail "ALLOWED_HOSTS 不是 JSON 数组形态：'${allowed_hosts}'"
+fi
+
+# ---- 8. 库不可达时全新库判定必须保守返回非零（否则会跳过升级前体检）----
+mkdir -p "${tmp}/bin-nodocker"
+printf '#!/bin/sh\nexit 1\n' >"${tmp}/bin-nodocker/docker"
+chmod +x "${tmp}/bin-nodocker/docker"
+if PATH="${tmp}/bin-nodocker:${PATH}" "${BASH_BIN}" -c "set -u; source '${work}/scripts/utils.sh'; is_fresh_database" > /dev/null 2>&1; then
+  fail "库不可达时 is_fresh_database 不应判定为全新库"
+fi
+
+# ---- 9. 数据目录属主修正不得中止（镜像未就绪时回落 1001，无权限时仅告警）----
+PATH="${tmp}/bin-nodocker:${PATH}" "${BASH_BIN}" -c "set -u; source '${work}/scripts/utils.sh'; ensure_data_dir_owner" >"${tmp}/out9" 2>&1 || {
+  cat "${tmp}/out9"
+  fail "ensure_data_dir_owner 中止"
+}
+
 echo "set -u runtime guard passed"

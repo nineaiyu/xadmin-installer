@@ -14,7 +14,7 @@ services:
     volumes:
       - ${VOLUME_DIR}/server/data:/data/xadmin-server/data
     healthcheck:
-      test: "bash utils/check_celery.sh"
+      test: "bash ops/check_celery.sh"
       interval: 10s
       timeout: 5s
       retries: 3

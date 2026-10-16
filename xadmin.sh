@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 失败即退：离线安装器不允许"半装"状态继续执行（bash >= 4.4，空数组展开需 4.4+）
+# 失败即退：离线安装器不允许"半装"状态继续执行（目标机 CentOS 7 自带 bash 4.2，
+# 勿用 4.4 才支持的构造：set -u 下展开空数组会报 unbound，须先判 ${#arr[@]}）
 set -euo pipefail
 #
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"

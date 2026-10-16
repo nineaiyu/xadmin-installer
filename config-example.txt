@@ -69,6 +69,14 @@ REDIS_PASSWORD=
 #
 XADMIN_ADMIN_PASSWORD=
 
+################################# Host Configuration ##################################
+# Host whitelist. Required when the server runs with DEBUG disabled (the server refuses
+# to start without it). Leave empty to let the installer derive it from the machine IP,
+# loopback addresses and DOMAINS. To set it manually use a JSON array, e.g.
+# ALLOWED_HOSTS=["xadmin.example.com","192.168.0.112","127.0.0.1"]
+#
+ALLOWED_HOSTS=
+
 ################################# Access Configuration ################################
 # The service port provided to the outside, if it conflicts with the existing service, please modify it yourself
 #
