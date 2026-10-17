@@ -39,6 +39,12 @@ $ ./xadmin.sh restore_db <备份文件>
 #      旧迁移链路的库会被拦下并指引清库重建，SKIP_UPGRADE_CHECK=1 可跳过）
 $ ./xadmin.sh upgrade [v4.x.y]
 
+升级脚本在迁移前先做**数据库体检**：判定为 `legacy-inplace-capable`（按域分表之前的旧库但结构可自动对齐）
+时会打印完整预演并询问是否执行**原地对齐**——表改名 / 补列 / 补表 / 内容类型与存量引用重指 / 账本重写，
+数据、主键、附件与自有 app 的表都保留，不需要清库重建。跳过用 `SKIP_INPLACE_ALIGN=1`（旧行为，
+对按域分表之前的库会失败）；二开 app 的旧引用改写见
+`python manage.py legacy_rewrite_app_refs --app-path <你的 app> --tag <旧版本 tag>`。
+
 # 卸载
 $ ./xadmin.sh uninstall
 

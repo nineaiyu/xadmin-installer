@@ -683,20 +683,81 @@ function preflight_migration_check() {
     echo "SKIP_UPGRADE_CHECK=1, skip pre-upgrade database check"
     return 0
   fi
-  if docker exec -i xadmin-server bash -c 'python manage.py upgrade_check' 2>/dev/null; then
+  # --tag 让体检把库的旧表名对应到当时的模型（域改名的推断率更高），结论更准
+  local version tag
+  version=$(get_config CURRENT_VERSION)
+  tag="v${version#[vV]}"
+  if docker exec -i xadmin-server bash -c "python manage.py upgrade_check --tag ${tag}" 2> /dev/null; then
     return 0
   fi
-  log_error "Pre-upgrade check failed: the database may come from an incompatible migration chain"
-  log_error "or have schema drift. See docs/ops/upgrade-stock.md (backup + clean rebuild)."
-  log_error "Databases created before the domain split (tables named system_userinfo / system_uploadfile)"
-  log_error "cannot be upgraded in place: clean rebuild then re-import with"
-  log_error "  python manage.py legacy_export --output /tmp/xadmin-legacy   (on the old version)"
-  log_error "  python manage.py legacy_import --input /tmp/xadmin-legacy   (on the new version)"
+  log_error "Pre-upgrade check failed: the database structure cannot be upgraded automatically."
+  log_error "The output above lists the blockers (unmapped tables / missing columns / unknown chain)."
+  log_error "Options: (1) resolve the blockers and re-run, or (2) clean rebuild + re-import:"
+  log_error "  python ops/legacy_export.py --dsn \"postgresql://...\" --output /tmp/xadmin-legacy  (old version)"
+  log_error "  python manage.py legacy_import --input /tmp/xadmin-legacy                            (new version)"
+  log_error "See docs/ops/upgrade-stock.md and docs/plans/原地升级立项与方案-2026.10.md."
   confirm="n"
   read_from_input confirm "Run database migration anyway? (NOT recommended)" "y/n" "${confirm}"
   if [[ "${confirm}" != "y" ]]; then
     exit 1
   fi
+}
+
+# 原地升级（四域切分前的库）：体检通过后探询「是否需要结构对齐」，需要则**先预演再执行**。
+# 探询取自 legacy_align --probe 的退出码：0=需要对齐 / 1=结构已一致 / 2=有阻断项 / 3=无法判定。
+# 结构对齐在数据库备份之后执行（7_upgrade.sh 的第 3 步），失败即退出并提示用备份恢复；
+# SKIP_INPLACE_ALIGN=1 跳过（极旧镜像没有该命令时也会自动降级为告警继续）。
+function inplace_align_if_needed() {
+  if [[ "${SKIP_INPLACE_ALIGN:-0}" == "1" ]]; then
+    echo "SKIP_INPLACE_ALIGN=1, skip in-place structure alignment"
+    return 0
+  fi
+  local version tag probe output answer
+  version=$(get_config CURRENT_VERSION)
+  tag="v${version#[vV]}"
+  if output=$(docker exec -i xadmin-server bash -c "python manage.py legacy_align --probe --tag ${tag}" 2>&1); then
+    probe=0
+  else
+    probe=$?
+  fi
+  printf '%s\n' "${output}"
+  case "${probe}" in
+    0)
+      log_warn "Legacy structure detected: the next step aligns tables/columns/references IN PLACE"
+      log_warn "(rows, primary keys, attachments and your own app tables are preserved)."
+      log_warn "A full preview of the plan:"
+      docker exec -i xadmin-server bash -c "python manage.py legacy_align --tag ${tag}" || true
+      # 无人值守（CI / 演练 / 灾备脚本）：INPLACE_ALIGN=1 直接执行，跳过确认。
+      # 注意别用「管道喂 y」来驱动交互：本流程里的 docker exec -i（体检 / 预演）会先读走 stdin，
+      # 管道里的答案会被吞掉，表现为「明明答了 y 却被拒」。要自动化就用这个开关。
+      answer="n"
+      if [[ "${INPLACE_ALIGN:-0}" == "1" ]]; then
+        answer="y"
+      else
+        read_from_input answer "Apply the in-place structure alignment now?" "y/n" "n"
+      fi
+      if [[ "${answer}" != "y" ]]; then
+        log_error "In-place alignment declined. The standard migration will be attempted instead,"
+        log_error "but it cannot converge for a pre-domain-split database (see docs/ops/upgrade-stock.md)."
+        exit 1
+      fi
+      if ! docker exec -i xadmin-server bash -c "python manage.py legacy_align --tag ${tag} --apply"; then
+        log_error "In-place alignment failed. Restore the database backup, then retry."
+        exit 1
+      fi
+      log_success "In-place structure alignment finished (data, primary keys and extensions preserved)"
+      ;;
+    1)
+      echo "Database structure already matches the target version; nothing to align"
+      ;;
+    2)
+      log_error "In-place alignment is blocked by unmapped structure (see the probe output above)."
+      exit 1
+      ;;
+    *)
+      log_warn "In-place alignment probe unavailable on this image; falling back to the standard path"
+      ;;
+  esac
 }
 
 # PostgreSQL 数据目录主版本（如 16 / 17）。
@@ -833,6 +894,7 @@ function perform_db_migrations() {
     echo "检测到全新数据库（无业务表），跳过升级前体检"
   else
     preflight_migration_check
+    inplace_align_if_needed
   fi
 
   # 迁移账本认领（4.x → 5.0 迁移链合并）：删除旧链游离记录并把合并链迁移记为已应用，

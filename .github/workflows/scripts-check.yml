@@ -49,3 +49,26 @@ jobs:
 
       - name: Runtime guard (set -u unbound variables)
         run: bash .github/scripts/set-u-guard.sh
+
+      - name: Optional env switches must use the "${VAR:-default}" form
+        run: |
+          set -euo pipefail
+          # set -u 下裸引用可选开关会直接中止安装/升级（历史事故见 AGENTS.md §十.7）
+          if grep -rnE '\$SKIP_[A-Z_]+' scripts xadmin.sh quick_start.sh \
+            | grep -vE '\$\{SKIP_[A-Z_]+:-'; then
+            echo "bare \$SKIP_* reference found; use \${VAR:-0} instead"
+            exit 1
+          fi
+          echo "optional switches use the safe form"
+
+      - name: In-place alignment wiring present
+        run: |
+          set -euo pipefail
+          # 升级链路必须保留「探询 → 预演 → 确认 → 执行」：探询用 --probe，执行才带 --apply
+          grep -q 'function inplace_align_if_needed' scripts/utils.sh
+          grep -q 'legacy_align --probe' scripts/utils.sh
+          grep -q -- '--tag ${tag} --apply' scripts/utils.sh
+          grep -q 'inplace_align_if_needed$' scripts/utils.sh
+          # 无人值守开关：交互确认必须能用 INPLACE_ALIGN=1 跳过（docker exec -i 会吞掉管道输入）
+          grep -q 'INPLACE_ALIGN:-0' scripts/utils.sh
+          echo "in-place alignment wiring present"
