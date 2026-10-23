@@ -47,6 +47,10 @@ $ ./xadmin.sh upgrade [v4.x.y]
 原地对齐由目标镜像的 `legacy_align` 执行：**5.0.1 及更早镜像没有该命令**，探询会判为「无法判定」
 并降级为标准路径（切分前旧库会失败），请升级到 5.0.2+（或按文档清库重建 + 回灌）。
 
+> 复跑 4.2.5 → 5.x 的目标机升级还需要旧版基础镜像（`postgres:16.8` / `redis:7.4.3`）与
+> `xadmin-web:4.2.5` 已同步到镜像仓；基础镜像清单见 `utils/base-images.yml`，
+> web 镜像用 `gh workflow run sync-image-mirror.yml -f version=4.2.5` 补同步。
+
 # 卸载
 $ ./xadmin.sh uninstall
 
