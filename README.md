@@ -44,6 +44,8 @@ $ ./xadmin.sh upgrade [v4.x.y]
 数据、主键、附件与自有 app 的表都保留，不需要清库重建。跳过用 `SKIP_INPLACE_ALIGN=1`（旧行为，
 对按域分表之前的库会失败）；二开 app 的旧引用改写见
 `python manage.py legacy_rewrite_app_refs --app-path <你的 app> --tag <旧版本 tag>`。
+原地对齐由目标镜像的 `legacy_align` 执行：**5.0.1 及更早镜像没有该命令**，探询会判为「无法判定」
+并降级为标准路径（切分前旧库会失败），请升级到 5.0.2+（或按文档清库重建 + 回灌）。
 
 # 卸载
 $ ./xadmin.sh uninstall

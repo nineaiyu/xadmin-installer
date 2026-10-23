@@ -28,12 +28,20 @@ trap 'rm -rf "${tmp}"' EXIT
 # 受限 PATH 场景下必须靠绝对路径调用 bash（否则 bash 自身会找不到）
 BASH_BIN="$(command -v bash)"
 
+# sed -i 的 GNU/BSD 参数形态不同：统一走临时文件，保证 macOS 本地可跑、CI 行为一致
+sed_inplace() {
+  local expr="$1"
+  local file="$2"
+  local tmpf="${file}.sedtmp"
+  sed "${expr}" "${file}" >"${tmpf}" && mv "${tmpf}" "${file}"
+}
+
 # ---- 隔离副本：CONFIG_DIR 固定指向 /opt/xadmin/config，改写到临时目录 ----
 work="${tmp}/repo"
 mkdir -p "${work}"
 cp -R scripts "${work}/scripts"
 cp static.env "${work}/static.env" # const.sh 会 source 仓库根的 static.env
-sed -i "s#^export CONFIG_DIR=.*#export CONFIG_DIR='${work}/cfg'#" "${work}/scripts/const.sh"
+sed_inplace "s#^export CONFIG_DIR=.*#export CONFIG_DIR='${work}/cfg'#" "${work}/scripts/const.sh"
 mkdir -p "${work}/cfg"
 cat >"${work}/cfg/config.txt" <<EOF
 VOLUME_DIR=${tmp}/vol
@@ -157,7 +165,7 @@ out=$("${BASH_BIN}" -c "set -u; set -- v5.0.1; source '${work}/scripts/7_upgrade
 
 # ---- 11. 升级基线门禁：低于 4.2.5 阻断，带 v 前缀的当前版本可通过 ----
 baseline_case() {
-  sed -i "s/^CURRENT_VERSION=.*/CURRENT_VERSION=$1/" "${work}/cfg/config.txt"
+  sed_inplace "s/^CURRENT_VERSION=.*/CURRENT_VERSION=$1/" "${work}/cfg/config.txt"
   "${BASH_BIN}" -c "set -u; set -- ''; source '${work}/scripts/7_upgrade.sh'; verify_upgrade_version" > /dev/null 2>&1
 }
 baseline_case 4.2.4 && fail "当前版本 4.2.4 应被升级基线门禁阻断" || true
@@ -170,5 +178,36 @@ if ! PATH="${tmp}:${PATH}" "${BASH_BIN}" -c "set -u; set -- ''; source '${work}/
   cat "${tmp}/out12"
   fail "backup_db 在 SKIP_BACKUP_DB 未设置时中止（可选开关缺 :- 默认值？）"
 fi
+
+# ---- 13. 原地对齐探询按标记行判读（退出码 1 同时是「已一致」与「命令不存在」）----
+# 目标镜像没有 legacy_align 时 manage.py 以 1 退出；若只看退出码会被误判为「无需对齐」。
+probe_case() {
+  local name="$1" expect="$2" code="$3"
+  local bin="${tmp}/bin-probe-${name}"
+  mkdir -p "${bin}"
+  cat >"${bin}/docker" <<EOF
+#!/bin/sh
+printf '%s\n' '${4}'
+exit ${code}
+EOF
+  chmod +x "${bin}/docker"
+  if PATH="${bin}:${PATH}" "${BASH_BIN}" -c "set -u; source '${work}/scripts/utils.sh'; inplace_align_if_needed" < /dev/null >"${tmp}/out13-${name}" 2>&1; then
+    local rc=0
+  else
+    local rc=$?
+  fi
+  grep -q "${expect}" "${tmp}/out13-${name}" || {
+    cat "${tmp}/out13-${name}"
+    fail "inplace probe '${name}' 未输出预期结论（期望命中 '${expect}'）"
+  }
+  echo "${rc}" >"${tmp}/rc13-${name}"
+}
+
+probe_case already-consistent "structure already matches" 1 "inplace-none"
+probe_case command-missing "probe unavailable" 1 "Unknown command: 'legacy_align'"
+probe_case blocked "blocked by unmapped structure" 2 "inplace-blocked"
+[[ "$(cat "${tmp}/rc13-blocked")" != "0" ]] || fail "inplace-blocked 必须中止升级（不应返回 0）"
+probe_case needed-declined "In-place alignment declined" 0 "inplace-needed（改名 1 张，补列 0 列）"
+[[ "$(cat "${tmp}/rc13-needed-declined")" != "0" ]] || fail "拒绝原地对齐时必须中止升级（不应返回 0）"
 
 echo "set -u runtime guard passed"

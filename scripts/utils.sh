@@ -704,7 +704,10 @@ function preflight_migration_check() {
 }
 
 # 原地升级（四域切分前的库）：体检通过后探询「是否需要结构对齐」，需要则**先预演再执行**。
-# 探询取自 legacy_align --probe 的退出码：0=需要对齐 / 1=结构已一致 / 2=有阻断项 / 3=无法判定。
+# 探询取自 legacy_align --probe 的结论标记：inplace-needed / inplace-none / inplace-blocked /
+# inplace-unknown，对应 0=需要对齐 / 1=结构已一致 / 2=有阻断项 / 3=无法判定。
+# **不能只看退出码**：目标镜像里没有 legacy_align 命令时（如 5.0.1 及更早），manage.py 以 1
+# 退出，与「结构已一致」同码，会被误判成「无需对齐」而跳过对齐。
 # 结构对齐在数据库备份之后执行（7_upgrade.sh 的第 3 步），失败即退出并提示用备份恢复；
 # SKIP_INPLACE_ALIGN=1 跳过（极旧镜像没有该命令时也会自动降级为告警继续）。
 function inplace_align_if_needed() {
@@ -721,6 +724,13 @@ function inplace_align_if_needed() {
     probe=$?
   fi
   printf '%s\n' "${output}"
+  case "${output}" in
+    *inplace-needed*) probe=0 ;;
+    *inplace-none*) probe=1 ;;
+    *inplace-blocked*) probe=2 ;;
+    *inplace-unknown*) probe=3 ;;
+    *) probe=3 ;;
+  esac
   case "${probe}" in
     0)
       log_warn "Legacy structure detected: the next step aligns tables/columns/references IN PLACE"
