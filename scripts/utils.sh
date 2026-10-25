@@ -19,21 +19,13 @@ function is_confirm() {
 }
 
 function random_str() {
+  # 凭据生成一律走 /dev/urandom：历史上存在 dmidecode 硬件指纹的确定性分支，
+  # 同机重装凭据恒定、特定硬件可预测，已删除——不要恢复任何基于机器指纹的种子。
   len=$1
   if [[ -z ${len} ]]; then
     len=24
   fi
-  uuid=""
-  if check_root && command -v dmidecode &>/dev/null; then
-    if [[ ${len} -gt 24 ]]; then
-      uuid=$(dmidecode -s system-uuid | sha256sum | awk '{print $1}' | head -c ${len})
-    fi
-  fi
-  if [[ "${#uuid}" == "${len}" ]]; then
-    echo "${uuid}"
-  else
-    head -c200 < /dev/urandom | base64 | tr -dc A-Za-z0-9 | head -c ${len}; echo
-  fi
+  head -c200 < /dev/urandom | base64 | tr -dc A-Za-z0-9 | head -c ${len}; echo
 }
 
 function has_config() {

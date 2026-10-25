@@ -61,19 +61,27 @@ function usage() {
   echo "More Commands: "
   echo "  check_update      Check latest version"
   echo "  load_image        Loading docker image"
+  echo "  pull_images       Pull docker image from registry"
+  echo "  pull [service]    Pull single service image"
+  echo "  close [service]   Stop services (keep containers)"
   echo "  backup_db         Backup database"
   echo "  restore_db [file] Data recovery through database backup file"
   echo "  raw               Execute the original docker compose command"
   echo "  tail [service]    View log"
+  echo "  cmd               Print the docker compose command in use"
+  echo "  show_services     List compose services"
+  echo "  init_db           Initialize database data"
+  echo "  version           Print current version"
+  echo
+  echo "Note: stop (no args) = down (stop containers, remove networks; volumes/bind mounts kept)."
+  echo "      use close for a plain stop (keep containers); uninstall for full cleanup."
   echo
 }
 
 function service_to_docker_name() {
   service=$1
-  if [[ "${service:0:3}" != "jms" ]]; then
-    service=xadmin-${service}
-  fi
-  echo "${service}"
+  # 本产品容器名恒为 xadmin- 前缀（历史上游项目的 jms 特判已随迁移删除）
+  echo "xadmin-${service}"
 }
 
 EXE=""
@@ -87,7 +95,9 @@ function stop() {
     ${EXE} stop "${target}" && ${EXE} rm -f "${target}"
     return
   fi
-  ${EXE} down -v
+  # 停容器 + 删网络即可全量下线（restart 依赖本路径）；数据全在 bind mount，
+  # 不需要 -v 删卷——「stop」不应带销毁性语义（要彻底清理走 down / uninstall）
+  ${EXE} down
 }
 
 function close() {
