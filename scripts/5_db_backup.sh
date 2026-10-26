@@ -59,6 +59,10 @@ function main() {
     exit 1
   else
     log_success "Backup succeeded! The backup file has been saved to: ${DB_FILE}"
+    # 升级脚本据此在回滚指引里自动填入本次备份路径（可选，不设置时无副作用）
+    if [[ -n "${DB_BACKUP_FILE_OUT:-}" ]]; then
+      printf '%s\n' "${DB_FILE}" >"${DB_BACKUP_FILE_OUT}"
+    fi
   fi
 
   if [[ "${flag}" == "1" ]]; then

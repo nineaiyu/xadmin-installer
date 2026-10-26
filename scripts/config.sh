@@ -109,6 +109,7 @@ function set_ssl() {
     set_config SERVER_NAME "${server_name}"
     set_config SSL_CERTIFICATE "${ssl_certificate}"
     set_config SSL_CERTIFICATE_KEY "${ssl_certificate_key}"
+    ensure_https_certificates
     flag=1
 }
 

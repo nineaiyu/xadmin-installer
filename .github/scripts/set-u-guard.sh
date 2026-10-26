@@ -116,7 +116,7 @@ if ! PATH="${tmp}:${PATH}" bash "${work}/scripts/5_db_backup.sh" >"${tmp}/out5" 
 fi
 
 printf 'guard-dummy\n' >"${tmp}/guard.dump"
-if ! PATH="${tmp}:${PATH}" bash "${work}/scripts/6_db_restore.sh" "${tmp}/guard.dump" >"${tmp}/out6" 2>&1; then
+if ! PATH="${tmp}:${PATH}" YES_I_KNOW=1 bash "${work}/scripts/6_db_restore.sh" "${tmp}/guard.dump" >"${tmp}/out6" 2>&1; then
   cat "${tmp}/out6"
   fail "恢复脚本在「数据库已在运行」路径中止（flag 未初始化？）"
 fi
@@ -209,5 +209,84 @@ probe_case blocked "blocked by unmapped structure" 2 "inplace-blocked"
 [[ "$(cat "${tmp}/rc13-blocked")" != "0" ]] || fail "inplace-blocked 必须中止升级（不应返回 0）"
 probe_case needed-declined "In-place alignment declined" 0 "inplace-needed（改名 1 张，补列 0 列）"
 [[ "$(cat "${tmp}/rc13-needed-declined")" != "0" ]] || fail "拒绝原地对齐时必须中止升级（不应返回 0）"
+
+# ---- 14. 升级回滚指引必须带入本次 DB / 配置备份路径 ----
+out=$("${BASH_BIN}" -c "set -u; set -- ''; source '${work}/scripts/7_upgrade.sh'; db_backup_file='${tmp}/db.dump'; backup_config_file='${tmp}/config.conf'; print_rollback_guide")
+grep -q "6_db_restore.sh ${tmp}/db.dump" <<<"${out}" || fail "回滚指引未带入本次数据库备份文件"
+grep -q "cp ${tmp}/config.conf" <<<"${out}" || fail "回滚指引未带入配置备份文件"
+
+# ---- 15. 旧镜像清理默认 n（回车 / 非交互不得删除回滚镜像）----
+sed_inplace "s/^CURRENT_VERSION=.*/CURRENT_VERSION=guard/" "${work}/cfg/config.txt"
+mkdir -p "${tmp}/bin-images"
+cat >"${tmp}/bin-images/docker" <<'EOS'
+#!/bin/sh
+case "$*" in
+  images*) echo "nineaiyu/xadmin-server:guard" ;;
+esac
+exit 0
+EOS
+chmod +x "${tmp}/bin-images/docker"
+clean_default=$(PATH="${tmp}/bin-images:${PATH}" "${BASH_BIN}" -c "set -u; set -- ''; source '${work}/scripts/7_upgrade.sh'; to_version='new'; read_from_input() { export \"\$1\"=\"\$4\"; printf '%s' \"\$4\"; }; clean_images" 2>&1)
+[[ "${clean_default}" == n* ]] || fail "旧镜像清理默认值不是 n（得到 '${clean_default}'）"
+grep -q "Old images kept" <<<"${clean_default}" || fail "默认 n 时仍删除了旧镜像"
+
+# ---- 16. 数据库恢复：默认需确认；YES_I_KNOW=1 时强制停应用容器 ----
+mkdir -p "${tmp}/bin-restore"
+cat >"${tmp}/bin-restore/docker" <<EOS
+#!/bin/sh
+echo "\$*" >>"${tmp}/docker-calls.log"
+case "\$*" in
+  *inspect*) echo healthy ;;
+  ps*) echo xadmin-server ;;
+esac
+exit 0
+EOS
+chmod +x "${tmp}/bin-restore/docker"
+
+: >"${tmp}/docker-calls.log"
+PATH="${tmp}/bin-restore:${PATH}" YES_I_KNOW=0 bash "${work}/scripts/6_db_restore.sh" "${tmp}/guard.dump" \
+  </dev/null >"${tmp}/out16-cancel" 2>&1 || {
+  cat "${tmp}/out16-cancel"
+  fail "无 YES_I_KNOW 且非交互时应取消恢复而非中止"
+}
+grep -q "Cancelled" "${tmp}/out16-cancel" || fail "非交互未确认时未取消恢复"
+if grep -q "stop xadmin-server" "${tmp}/docker-calls.log"; then
+  fail "取消恢复时不应停服"
+fi
+
+: >"${tmp}/docker-calls.log"
+if ! PATH="${tmp}/bin-restore:${PATH}" YES_I_KNOW=1 bash "${work}/scripts/6_db_restore.sh" "${tmp}/guard.dump" \
+  >"${tmp}/out16" 2>&1; then
+  cat "${tmp}/out16"
+  fail "YES_I_KNOW=1 时恢复脚本中止"
+fi
+grep -q "^stop xadmin-server$" "${tmp}/docker-calls.log" || {
+  cat "${tmp}/docker-calls.log"
+  fail "恢复前未强制停止 xadmin-server"
+}
+
+# ---- 17. 备份脚本必须把本次备份路径回填给升级脚本（回滚指引带参）----
+mkdir -p "${tmp}/backup-scripts"
+cat >"${tmp}/backup-scripts/5_db_backup.sh" <<EOS
+#!/usr/bin/env bash
+printf '%s\n' "${tmp}/fake.dump" >"\${DB_BACKUP_FILE_OUT}"
+EOS
+out=$("${BASH_BIN}" -c "set -u; set -- ''; source '${work}/scripts/7_upgrade.sh'; SCRIPT_DIR='${tmp}/backup-scripts'; backup_db; printf '%s' \"\${db_backup_file}\"")
+[[ "${out}" == "${tmp}/fake.dump" ]] || fail "backup_db 未回填本次备份路径（得到 '${out}'）"
+
+# ---- 18. 没有旧镜像时 clean_images 不得因 grep 无匹配而中止升级 ----
+mkdir -p "${tmp}/bin-noimages"
+cat >"${tmp}/bin-noimages/docker" <<'EOS'
+#!/bin/sh
+case "$*" in
+  images*) echo "other/image:1" ;;
+esac
+exit 0
+EOS
+chmod +x "${tmp}/bin-noimages/docker"
+if ! PATH="${tmp}/bin-noimages:${PATH}" "${BASH_BIN}" -c "set -u; set -- ''; source '${work}/scripts/7_upgrade.sh'; to_version='new'; clean_images" >"${tmp}/out18" 2>&1; then
+  cat "${tmp}/out18"
+  fail "无旧镜像时 clean_images 中止（grep 无匹配未兜底？）"
+fi
 
 echo "set -u runtime guard passed"

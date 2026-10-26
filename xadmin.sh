@@ -19,7 +19,7 @@ function check_config_file() {
     return 3
   fi
   if [[ -f .env ]]; then
-    if ! ls -l .env | grep "${CONFIG_FILE}" &>/dev/null; then
+    if [[ "$(readlink .env 2>/dev/null)" != "${CONFIG_FILE}" ]]; then
       echo ".env 软连接存在问题, 重新更新"
       rm -f .env
     fi
@@ -51,6 +51,7 @@ function usage() {
   echo
   echo "Management Commands: "
   echo "  config            Configuration  Tools"
+  echo "  reconfig          Recreate containers with current configuration"
   echo "  start             Start     xAdmin"
   echo "  stop              Stop      xAdmin"
   echo "  restart           Restart   xAdmin"

@@ -20,7 +20,8 @@ STATIC_ENV=${PROJECT_DIR}/static.env
 # shellcheck source=../static.env
 . "${STATIC_ENV}"
 
-export OS=$(uname -s)
+OS=$(uname -s)
+export OS
 export DOCKER_VERSION=27.2.0
 DOCKER_URL="https://download.docker.com/linux/static/stable"
 DOCKER_MIRROR="https://download.jumpserver.org/docker/docker-ce/linux/static/stable"

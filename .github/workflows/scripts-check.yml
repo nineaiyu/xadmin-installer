@@ -37,7 +37,28 @@ jobs:
           for f in xadmin.sh quick_start.sh scripts/7_upgrade.sh; do
             test -f "$f" || { echo "missing entry script: $f"; exit 1; }
           done
+          # 一键安装必须校验同 Release 的 .md5（供应链完整性，缺失/不匹配 fail-closed）
+          grep -q 'md5sum -c' quick_start.sh || { echo "quick_start.sh must verify the release .md5"; exit 1; }
+          grep -q 'tar.gz.md5' quick_start.sh || { echo "quick_start.sh must download the release .md5"; exit 1; }
           echo "entry scripts present"
+
+      # 交付脚本直接跑在客户机上：warning 级问题（未初始化变量、错误引用）也要拦。
+      # 当前基线 0 warning，新增告警会直接变红。
+      - name: Shellcheck (warning level)
+        run: shellcheck -S warning xadmin.sh quick_start.sh scripts/*.sh .github/scripts/*.sh
+
+      # 合并 compose 语法校验：单个 yml 依赖 network/env，必须整组渲染才能发现插值/依赖错误。
+      # CONFIG_FILE 必须真实存在（compose 的 env_file/labels 会读取它）。
+      - name: Compose config validation
+        run: |
+          set -euo pipefail
+          tmp="$(mktemp -d)"
+          printf 'VOLUME_DIR=%s/data\n' "$tmp" > "$tmp/config.txt"
+          VERSION=dev CONFIG_FILE="$tmp/config.txt" VOLUME_DIR="$tmp/data" CONFIG_DIR="$tmp/conf" \
+            docker compose --env-file config-example.txt \
+            -f compose/network.yml -f compose/server.yml -f compose/celery.yml \
+            -f compose/web.yml -f compose/redis.yml -f compose/postgres.yml \
+            -f compose/lb.yml config -q
 
   # bash -n 只校验语法，抓不到 set -euo pipefail 下「引用未初始化变量」的运行期中止
   # （v5.0.0 安装器曾因此在 prepare_check_required_pkg 处直接退出）。这里用桩把几条
@@ -49,6 +70,9 @@ jobs:
 
       - name: Runtime guard (set -u unbound variables)
         run: bash .github/scripts/set-u-guard.sh
+
+      - name: HTTPS certificate fail-closed guard
+        run: bash .github/scripts/https-cert-guard.sh
 
       - name: Optional env switches must use the "${VAR:-default}" form
         run: |

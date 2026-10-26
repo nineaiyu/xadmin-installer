@@ -38,7 +38,7 @@ function post_install() {
   echo_yellow "\n2. Other management commands"
   echo "./xadmin.sh stop"
   echo "./xadmin.sh restart"
-  echo "./xadmin.sh backup"
+  echo "./xadmin.sh backup_db"
   echo "./xadmin.sh upgrade"
   echo "For more commands, you can enter ./xadmin.sh --help to understand"
 

@@ -410,22 +410,10 @@ function prepare_config() {
     fi
   done
 
+  # 证书目录只建空目录：安装包不再携带任何证书/私钥（历史示例私钥已公开，
+  # 等价于无密钥）。HTTPS 部署必须先通过 `config ssl` 导入真实证书。
   nginx_cert_dir="${CONFIG_DIR}/nginx/cert"
-  if [[ ! -d ${nginx_cert_dir} ]]; then
-    mkdir -p "${nginx_cert_dir}"
-    \cp -rf "${PROJECT_DIR}/config_init/nginx/cert" "${CONFIG_DIR}/nginx"
-  fi
-
-  # shellcheck disable=SC2045
-  for f in $(ls "${PROJECT_DIR}/config_init/nginx/cert"); do
-    if [[ -f "${PROJECT_DIR}/config_init/nginx/cert/${f}" ]]; then
-      if [[ ! -f "${nginx_cert_dir}/${f}" ]]; then
-        \cp -f "${PROJECT_DIR}/config_init/nginx/cert/${f}" "${nginx_cert_dir}"
-      else
-        echo_check "${nginx_cert_dir}/${f} "
-      fi
-    fi
-  done
+  mkdir -p "${nginx_cert_dir}"
   chmod 700 "${CONFIG_DIR}/../"
   find "${CONFIG_DIR}" -type d -exec chmod 700 {} \;
   find "${CONFIG_DIR}" -type f -exec chmod 600 {} \;
@@ -447,6 +435,49 @@ function prepare_config() {
   fi
 
   ensure_allowed_hosts
+  ensure_https_certificates
+}
+
+# 历史版本随安装包公开分发的示例私钥（config_init/nginx/cert/server.key）。
+# 它不具备任何保密性，沿用它的 HTTPS 部署必须拒绝启动。
+LEGACY_EXAMPLE_TLS_KEY_SHA256="29df6e7180f93d5e372e4f0b91ff1cf3e350f8135d476d13b2fcd0c4e824c0b7"
+
+# HTTPS 证书 fail-closed：启用 HTTPS_PORT 时证书必须显式配置且真实存在；
+# 禁止回退到示例证书（web 镜像内的 init.sh 有同一道校验，这里是更早的一层）。
+function ensure_https_certificates() {
+  local https_port cert_name key_name cert_file key_file key_hash
+  https_port=$(get_config HTTPS_PORT)
+  if [[ -z "${https_port}" ]]; then
+    return
+  fi
+
+  cert_name=$(get_config SSL_CERTIFICATE)
+  key_name=$(get_config SSL_CERTIFICATE_KEY)
+  if [[ -z "${cert_name}" || -z "${key_name}" ]]; then
+    log_error "HTTPS_PORT=${https_port} is enabled, but SSL_CERTIFICATE / SSL_CERTIFICATE_KEY is empty."
+    log_error "Import a certificate with './xadmin.sh config ssl', or comment out HTTPS_PORT for HTTP-only."
+    exit 1
+  fi
+
+  cert_file="${CONFIG_DIR}/nginx/cert/${cert_name}"
+  key_file="${CONFIG_DIR}/nginx/cert/${key_name}"
+  if [[ ! -f "${cert_file}" ]]; then
+    log_error "HTTPS certificate not found: ${cert_file}"
+    log_error "Import a certificate with './xadmin.sh config ssl', or comment out HTTPS_PORT for HTTP-only."
+    exit 1
+  fi
+  if [[ ! -f "${key_file}" ]]; then
+    log_error "HTTPS certificate key not found: ${key_file}"
+    log_error "Import a certificate with './xadmin.sh config ssl', or comment out HTTPS_PORT for HTTP-only."
+    exit 1
+  fi
+
+  key_hash=$(sha256sum "${key_file}" | awk '{print $1}')
+  if [[ "${key_hash}" == "${LEGACY_EXAMPLE_TLS_KEY_SHA256}" ]]; then
+    log_error "HTTPS key ${key_file} is the example key shipped with old releases and is public."
+    log_error "Replace it with your own certificate: './xadmin.sh config ssl'"
+    exit 1
+  fi
 }
 
 # 服务端 5.0 起在 DEBUG=false 时强制要求 Host 白名单，缺失会直接拒绝启动

@@ -12,32 +12,31 @@
 $ ./xadmin.sh install
 ```
 
+一键脚本 `quick_start.sh` 会下载安装包并校验同 Release 的 `.md5`；校验缺失或不匹配会拒绝安装。
+
 ## 管理
 
-```
-# 启动
-$ ./xadmin.sh start
-
-# 重启
-$ ./xadmin.sh restart
-
-# 停止并移除全部容器（含数据库容器）
-$ ./xadmin.sh stop
-
-# 仅停止业务容器（保留数据库运行）
-$ ./xadmin.sh close
-
-# 查看状态 / 日志
-$ ./xadmin.sh status
-$ ./xadmin.sh tail [服务名]
-
-# 备份 / 恢复数据库
-$ ./xadmin.sh backup_db
-$ ./xadmin.sh restore_db <备份文件>
-
-# 升级（可指定版本；停服迁移前自动执行数据库升级前体检，
-#      旧迁移链路的库会被拦下并指引清库重建，SKIP_UPGRADE_CHECK=1 可跳过）
-$ ./xadmin.sh upgrade [v4.x.y]
+| 命令 | 说明 |
+|------|------|
+| `./xadmin.sh install` | 安装（版本取 `static.env`） |
+| `./xadmin.sh upgrade [vX.Y.Z]` | 升级（版本缺省取 `static.env`；流程见下） |
+| `./xadmin.sh check_update` | 检查最新版本并发起升级 |
+| `./xadmin.sh config <ntp\|init\|port\|ssl\|env>` | 配置工具（NTP / 初始化 / 端口 / 证书 / 环境变量） |
+| `./xadmin.sh reconfig` | 按当前配置重建容器（`down -v` + 配置初始化） |
+| `./xadmin.sh start` / `restart` / `stop` / `close` / `down` | 启停：`stop` = 全量下线（删网络，保留 bind mount 数据）；`close` 只停业务容器 |
+| `./xadmin.sh status` | 查看容器状态 |
+| `./xadmin.sh uninstall` | 卸载 |
+| `./xadmin.sh backup_db` | 备份数据库到 `${VOLUME_DIR}/db_backup` |
+| `./xadmin.sh restore_db <备份文件>` | 恢复数据库（需确认；会先停 server / celery，恢复后手动 `start`） |
+| `./xadmin.sh load_image` | 从安装包加载镜像 |
+| `./xadmin.sh pull_images` | 从镜像仓拉取镜像 |
+| `./xadmin.sh pull [服务名]` | 拉取单个服务镜像 |
+| `./xadmin.sh cmd` | 打印当前使用的 compose 命令 |
+| `./xadmin.sh tail [服务名]` | 查看日志 |
+| `./xadmin.sh show_services` | 列出 compose 服务 |
+| `./xadmin.sh init_db` | 执行数据库迁移 |
+| `./xadmin.sh raw <compose 参数>` | 透传原始 docker compose 参数 |
+| `./xadmin.sh version` | 打印当前版本 |
 
 升级脚本在迁移前先做**数据库体检**：判定为 `legacy-inplace-capable`（按域分表之前的旧库但结构可自动对齐）
 时会打印完整预演并询问是否执行**原地对齐**——表改名 / 补列 / 补表 / 内容类型与存量引用重指 / 账本重写，
@@ -47,14 +46,12 @@ $ ./xadmin.sh upgrade [v4.x.y]
 原地对齐由目标镜像的 `legacy_align` 执行：**5.0.1 及更早镜像没有该命令**，探询会判为「无法判定」
 并降级为标准路径（切分前旧库会失败），请升级到 5.0.2+（或按文档清库重建 + 回灌）。
 
+升级末尾脚本会自动启动服务并等待容器 healthy，健康通过后才询问是否清理旧镜像（**默认保留**，
+离线回滚依赖旧镜像）；健康校验失败时保留旧镜像并打印带本次备份路径的回滚指引。
+
 > 复跑 4.2.5 → 5.x 的目标机升级还需要旧版基础镜像（`postgres:16.8` / `redis:7.4.3`）与
 > `xadmin-web:4.2.5` 已同步到镜像仓；基础镜像清单见 `utils/base-images.yml`，
 > web 镜像用 `gh workflow run sync-image-mirror.yml -f version=4.2.5` 补同步。
-
-# 卸载
-$ ./xadmin.sh uninstall
-
-```
 
 ## 季度镜像核对（维护流程）
 
@@ -111,9 +108,7 @@ bash scripts/check_images.sh --check-mapping
 |── mariadb
 |   └── mariadb.cnf  # mariadb 配置文件
 ├── nginx            # nginx 配置文件
-│   ├── cert
-│   │   ├── server.crt
-│   │   └── server.key
+│   ├── cert         # 证书目录（空；HTTPS 需先 ./xadmin.sh config ssl 导入）
 │   └── lb_http_server.conf
 ├── README.md
 └── redis

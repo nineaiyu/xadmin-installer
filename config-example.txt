@@ -84,7 +84,9 @@ HTTP_PORT=80
 
 ################################# HTTPS Configuration #################################
 #
-# 方案一（内置 lb，本节）：取消注释并放置证书到 config_init/nginx/cert/ 后 reconfig；
+# 方案一（内置 lb，本节）：先执行 ./xadmin.sh config ssl 导入证书（会写入下面的
+# SSL_CERTIFICATE / SSL_CERTIFICATE_KEY 与 HTTPS_PORT），再 ./xadmin.sh reconfig。
+# 安装包不携带任何证书；启用 HTTPS_PORT 但证书缺失或沿用历史示例私钥时启动会直接失败。
 # 方案二（外置 acme.sh 自动签发）：见 deploy/web/README.md（独立 web 容器 + 自动续期，
 # 适合公网域名场景）。两方案二选一，不要同时启用。
 #

@@ -12,7 +12,20 @@ BACKUP_DIR=$(dirname "${DB_FILE}")
 
 DB_ENGINE=$(get_config DB_ENGINE "mysql")
 DB_HOST=$(get_config DB_HOST)
-DB_DATABASE=$(get_config DB_DATABASE)
+# 非交互（演练/自动化）跳过确认：YES_I_KNOW=1 ./xadmin.sh restore_db <file>
+YES_I_KNOW=${YES_I_KNOW:-0}
+
+function stop_app_services() {
+  # 恢复会 --clean 重建对象，应用连接持有锁会让恢复失败或留下半恢复状态；
+  # 强制停服（server 与 celery 全部退出），恢复完成后再由用户显式 start。
+  local name
+  for name in xadmin-server xadmin-celery-worker xadmin-celery-heavy xadmin-celery-beat; do
+    if docker ps --format '{{.Names}}' | grep -qx "${name}"; then
+      log_warn "Stopping ${name} before restoring the database"
+      docker stop "${name}" >/dev/null || log_warn "Failed to stop ${name}"
+    fi
+  done
+}
 
 function main() {
   # 显式初始化：脚本以 set -u 运行，数据库已在运行时 flag 不会被赋值
@@ -24,6 +37,16 @@ function main() {
     exit 1
   fi
 
+  if [[ "${YES_I_KNOW}" != "1" ]]; then
+    local confirm="n"
+    read_from_input confirm "This will overwrite the current database. Continue?" "y/n" "${confirm}"
+    if [[ "${confirm}" != "y" ]]; then
+      echo "Cancelled"
+      exit 0
+    fi
+  fi
+
+  stop_app_services
   db_images=$(get_db_images)
 
   echo "Start restoring database: $DB_FILE"
@@ -63,15 +86,17 @@ function main() {
   if [[ "${flag}" == "1" ]]; then
     down_db_ops_env
   fi
+  echo "Services were stopped for the restore. Run './xadmin.sh start' when you are ready."
 }
 
 if [[ "$0" == "${BASH_SOURCE[0]}" ]]; then
-  if [[ -z "$1" ]]; then
-    log_error "Format error！Usage './xadmin.sh restore_db DB_Backup_file '"
+  # set -u 下直接引用 $1 会在「无参」时 unbound 中止（用户看不到用法提示）
+  if [[ -z "${1:-}" ]]; then
+    log_error "Format error! Usage: './xadmin.sh restore_db DB_Backup_file'"
     exit 1
   fi
-  if [[ ! -f $1 ]]; then
-    echo "The backup file does not exist: $1"
+  if [[ ! -f "${1}" ]]; then
+    echo "The backup file does not exist: ${1}"
     exit 1
   fi
   main
