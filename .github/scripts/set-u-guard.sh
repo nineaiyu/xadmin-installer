@@ -289,4 +289,17 @@ if ! PATH="${tmp}/bin-noimages:${PATH}" "${BASH_BIN}" -c "set -u; set -- ''; sou
   fail "无旧镜像时 clean_images 中止（grep 无匹配未兜底？）"
 fi
 
+# ---- 19. 旧 config.txt 缺验证码票据键时补齐（升级必现的 captcha.E002），且重跑幂等 ----
+"${BASH_BIN}" -c "set -u; source '${work}/scripts/utils.sh'; ensure_captcha_ticket_secret" >"${tmp}/out19" 2>&1 || {
+  cat "${tmp}/out19"
+  fail "ensure_captcha_ticket_secret 中止"
+}
+captcha_secret=$("${BASH_BIN}" -c "source '${work}/scripts/utils.sh'; get_config CAPTCHA_TICKET_SECRET")
+captcha_audience=$("${BASH_BIN}" -c "source '${work}/scripts/utils.sh'; get_config CAPTCHA_TICKET_AUDIENCE")
+[[ ${#captcha_secret} -eq 48 ]] || fail "CAPTCHA_TICKET_SECRET 未生成 48 位（得到 ${#captcha_secret} 位）"
+[[ -n "${captcha_audience}" ]] || fail "CAPTCHA_TICKET_AUDIENCE 未写入部署标识"
+"${BASH_BIN}" -c "set -u; source '${work}/scripts/utils.sh'; ensure_captcha_ticket_secret" >/dev/null 2>&1
+[[ "$("${BASH_BIN}" -c "source '${work}/scripts/utils.sh'; get_config CAPTCHA_TICKET_SECRET")" == "${captcha_secret}" ]] ||
+  fail "ensure_captcha_ticket_secret 重跑覆盖了已有密钥"
+
 echo "set -u runtime guard passed"

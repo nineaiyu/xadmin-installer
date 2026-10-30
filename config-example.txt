@@ -26,6 +26,17 @@ VOLUME_DIR=/data/xadmin
 #
 SECRET_KEY=
 
+# Captcha ticket signing secret. Required when the server runs with DEBUG disabled
+# (the server refuses to start without it); keep it identical across server instances.
+# Leave empty: the installer generates one automatically (also for upgrades of old configs).
+#
+CAPTCHA_TICKET_SECRET=
+
+# Captcha ticket audience: a deployment identifier that isolates tickets between
+# deployments. Leave empty: derived from the first ALLOWED_HOSTS entry / machine IP.
+#
+CAPTCHA_TICKET_AUDIENCE=
+
 # Log level INFO, WARN, ERROR
 #
 LOG_LEVEL=ERROR

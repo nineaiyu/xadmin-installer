@@ -435,6 +435,7 @@ function prepare_config() {
   fi
 
   ensure_allowed_hosts
+  ensure_captcha_ticket_secret
   ensure_https_certificates
 }
 
@@ -518,6 +519,33 @@ function ensure_allowed_hosts() {
   allowed_hosts="[$(printf '%s\n' "${hosts[@]}" | awk '!seen[$0]++' | sed 's/^/"/; s/$/"/' | paste -sd, -)]"
   set_config ALLOWED_HOSTS "${allowed_hosts}"
   echo "ALLOWED_HOSTS= ${allowed_hosts}（按本机 IP / 回环 / DOMAINS 推导，可在 ${CONFIG_FILE} 调整）"
+}
+
+# 服务端 DEBUG=false 时 CAPTCHA_TICKET_SECRET 缺失会拒绝启动（captcha.E002）；
+# 旧版本 config.txt 没有该键，安装 / 升级 / reconfig 三条路径都靠这里补齐。
+# audience 为空时取首个 ALLOWED_HOSTS（推导值或用户域名）/ 本机 IP：留空运行期会
+# 回落到 SITE_URL 默认值（各部署相同 = 不隔离）并触发启动告警 captcha.W002。
+function ensure_captcha_ticket_secret() {
+  local secret audience allowed_hosts host
+  secret=$(get_config CAPTCHA_TICKET_SECRET)
+  if [[ -z "${secret}" ]]; then
+    secret=$(random_str 48)
+    set_config CAPTCHA_TICKET_SECRET "${secret}"
+    echo "CAPTCHA_TICKET_SECRET= generated (48 chars, required when DEBUG=false)"
+  fi
+  audience=$(get_config CAPTCHA_TICKET_AUDIENCE)
+  if [[ -z "${audience}" ]]; then
+    allowed_hosts=$(get_config ALLOWED_HOSTS)
+    host=$(printf '%s' "${allowed_hosts}" | sed -n 's/^\["\([^"]*\)".*/\1/p')
+    if [[ -z "${host}" ]]; then
+      host=$(get_host_ip)
+    fi
+    if [[ -z "${host}" ]]; then
+      host="localhost"
+    fi
+    set_config CAPTCHA_TICKET_AUDIENCE "${host}"
+    echo "CAPTCHA_TICKET_AUDIENCE= ${host}（部署标识，跨部署票据隔离）"
+  fi
 }
 
 function echo_logo() {

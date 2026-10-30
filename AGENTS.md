@@ -17,7 +17,7 @@
 | `compose/` | 服务编排（server / celery / web / init-db / postgres / mariadb / redis / lb / network；`lb.yml` 是 HTTPS 443 TLS 终止形态，把 `${CONFIG_DIR}/nginx/lb_http_server.conf` 挂成 `https_server.conf`——上游必须是 `web:51980`） |
 | `deploy/web/` | web 容器构建（nginx + acme.sh 证书） |
 | `utils/base-images.yml` | 第三方基础镜像清单：`sync-base-image-mirror.yml` 按它同步到阿里云，`check_images.sh --check-mapping` 按它核对 |
-| `.github/scripts/set-u-guard.sh` | `set -u` 陷阱回归用例（v 前缀归一化 / `SKIP_BACKUP_DB` / 回滚指引等 18 组），CI 跑 |
+| `.github/scripts/set-u-guard.sh` | `set -u` 陷阱回归用例（v 前缀归一化 / `SKIP_BACKUP_DB` / 回滚指引等 19 组），CI 跑 |
 | `config_init/` / `config-example.txt` | 配置模板；**不携带任何证书/私钥**，HTTPS 需 `config ssl` 导入 |
 
 `.env` 与 `compose/.env` 是指向 `config.txt` 的软链接——配置唯一来源是 `config.txt`；
@@ -27,7 +27,7 @@
 
 1. **所有 `*.sh` 必须过 `bash -n` 与 shellcheck（warning 级）**。CI `scripts-check.yml` 有八道门：
    bash -n 全量、入口脚本存在性（`xadmin.sh` / `quick_start.sh` / `scripts/7_upgrade.sh`）、
-   `set-u-guard.sh` 用例（18 组，含回滚指引/恢复停服/备份回填）、`https-cert-guard.sh`
+   `set-u-guard.sh` 用例（19 组，含回滚指引/恢复停服/备份回填/票据密钥补齐）、`https-cert-guard.sh`
    （证书缺失/示例私钥 fail-closed）、shellcheck（0 warning 基线）、合并 compose config 校验、
    裸 `$SKIP_*` 引用 grep 门、inplace 对齐接线 grep 门。
    本地自查：`for f in $(find . -name '*.sh' -type f); do bash -n "$f" || echo "FAIL $f"; done`
@@ -64,8 +64,10 @@
    新增/改名命令时三处同步修改；当前 23 个命令已对齐。
 9. **配置要满足服务端 fail-fast 校验**：`SECRET_KEY` 由 `set_secret_key` 生成；`ALLOWED_HOSTS`
    由 `prepare_config` 调 `ensure_allowed_hosts` 推导（服务端 5.0 起 `DEBUG=false` 时必须配置，
-   缺失即拒绝启动；4.2.x 旧配置没有该键，升级路径同样依赖它）。`set_config` 的替换已做 sed
-   转义，值里可以出现逗号/引号（JSON 数组）等字符。
+   缺失即拒绝启动；4.2.x 旧配置没有该键，升级路径同样依赖它）。`CAPTCHA_TICKET_SECRET`
+   与 `CAPTCHA_TICKET_AUDIENCE` 由 `ensure_captcha_ticket_secret` 补齐（同一调用链；
+   `DEBUG=false` 缺密钥时服务端 `captcha.E002` 拒绝启动，旧配置升级必现）。`set_config`
+   的替换已做 sed 转义，值里可以出现逗号/引号（JSON 数组）等字符。
 10. **运行期约束（5.0 起）**：应用镜像以 `USER 1001` 运行（4.2.x 为 root），`${VOLUME_DIR}/server/data`
     必须归该用户，由 `ensure_data_dir_owner`（`create_db_ops_env` 内调用）保证；容器健康检查脚本
     在镜像的 `ops/`（不是 `utils/`）；全新库由 `is_fresh_database` 判定后跳过升级前体检
