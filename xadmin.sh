@@ -146,15 +146,17 @@ function check_update() {
 }
 
 function main() {
+  # 平台不支持必须以非零退出：exit 0 会被脚本化调用（curl|bash 的守护脚本、
+  # 自动化等）误判为「执行成功/已装好」；退出码 0 只属于真正的成功
   if [[ "${OS}" == 'Darwin' ]]; then
     echo
     echo "Unsupported Operating System Error"
-    exit 0
+    exit 1
   fi
   if [[ "${OS}" =~ MINGW.* ]]; then
     echo
     echo "Unsupported Operating System Error"
-    exit 0
+    exit 1
   fi
 
   if [[ "${action}" == "help" || "${action}" == "h" || "${action}" == "-h" || "${action}" == "--help" ]]; then

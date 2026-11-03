@@ -43,7 +43,7 @@ function install_compose() {
     if [[ ! -d "/usr/local/libexec/docker/cli-plugins" ]]; then
       mkdir -p /usr/local/libexec/docker/cli-plugins
     fi
-    \cp -f ${BASE_DIR}/docker/docker-compose /usr/local/libexec/docker/cli-plugins/
+    \cp -f "${BASE_DIR}/docker/docker-compose" /usr/local/libexec/docker/cli-plugins/
   fi
 }
 
@@ -53,9 +53,9 @@ function install_compose_home() {
   fi
   if [[ ! -f "$HOME/.docker/cli-plugins/docker-compose" ]]; then
     if [[ ! -d "$HOME/.docker/cli-plugins" ]]; then
-      mkdir -p $HOME/.docker/cli-plugins
+      mkdir -p "$HOME/.docker/cli-plugins"
     fi
-    \cp -f ${BASE_DIR}/docker/docker-compose $HOME/.docker/cli-plugins/
+    \cp -f "${BASE_DIR}/docker/docker-compose" "$HOME/.docker/cli-plugins/"
   fi
 }
 

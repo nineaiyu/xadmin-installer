@@ -15,7 +15,9 @@ services:
     ports:
       - ${HTTP_PORT:-80}:${HTTP_PORT:-80}
     volumes:
-      - ${VOLUME_DIR}/server/data:/data/xadmin/server/data
+      # web 只读消费媒体目录（.well-known root / _protected_media alias），
+      # 写入方是 server 容器；nginx 自身的临时文件与日志都在镜像内/独立挂载
+      - ${VOLUME_DIR}/server/data:/data/xadmin/server/data:ro
       - ${VOLUME_DIR}/nginx/data/logs:/var/log/nginx
     healthcheck:
       test: "curl -fsL http://localhost:51980/web/health/"
@@ -23,5 +25,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 90s
+    # 日志上限兜底：已有 daemon.json 的机器不会补 log-opts，per-service 声明兜住
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - net

@@ -31,20 +31,22 @@ function main() {
   fi
   case "${DB_HOST}" in
     mysql|postgresql)
-      while [[ "$(docker inspect -f "{{.State.Health.Status}}" xadmin-${DB_HOST})" != "healthy" ]]; do
-        sleep 5s
-      done
+      # 有界等待（300s）替代无超时轮询：DB 卡在 unhealthy 时备份快速失败，不无限挂起
+      if ! wait_container_healthy "xadmin-${DB_HOST}" 300; then
+        log_error "Database container xadmin-${DB_HOST} failed to become healthy; check 'docker logs xadmin-${DB_HOST}'"
+        exit 1
+      fi
       ;;
   esac
 
   case "${DB_ENGINE}" in
     mysql)
       DB_FILE=${BACKUP_DIR}/${DB_DATABASE}-${CURRENT_VERSION}-$(date +%F_%T).sql
-      backup_cmd='mariadb-dump --skip-add-locks --skip-lock-tables --single-transaction -h$DB_HOST -P$DB_PORT -u$DB_USER -p"$DB_PASSWORD" $DB_DATABASE > '${DB_FILE}
+      backup_cmd='mariadb-dump --skip-add-locks --skip-lock-tables --single-transaction -h"$DB_HOST" -P"$DB_PORT" -u"$DB_USER" -p"$DB_PASSWORD" "$DB_DATABASE" > "$DB_FILE"'
       ;;
     postgresql)
       DB_FILE=${BACKUP_DIR}/${DB_DATABASE}-${CURRENT_VERSION}-$(date +%F_%T).dump
-      backup_cmd='PGPASSWORD=${DB_PASSWORD} pg_dump --format=custom --no-owner -U $DB_USER -h $DB_HOST -p $DB_PORT -d "$DB_DATABASE" -f '${DB_FILE}
+      backup_cmd='PGPASSWORD="$DB_PASSWORD" pg_dump --format=custom --no-owner -U "$DB_USER" -h "$DB_HOST" -p "$DB_PORT" -d "$DB_DATABASE" -f "$DB_FILE"'
       ;;
     *)
       log_error "Invalid DB Engine selection!"
@@ -52,7 +54,8 @@ function main() {
       ;;
   esac
 
-  if ! docker run --rm --env-file=${CONFIG_FILE} -i --network=xadmin_net -v "${BACKUP_DIR}:${BACKUP_DIR}" "${db_images}" bash -c "${backup_cmd}"; then
+  # 备份文件路径经 DB_FILE 环境变量传入容器（路径含空格/元字符时不再拼进命令串）
+  if ! docker run --rm --env-file="${CONFIG_FILE}" -e DB_FILE="${DB_FILE}" -i --network=xadmin_net -v "${BACKUP_DIR}:${BACKUP_DIR}" "${db_images}" bash -c "${backup_cmd}"; then
     log_error "Backup failed!"
     log_error "Backup failed!"
     rm -f "${DB_FILE}"

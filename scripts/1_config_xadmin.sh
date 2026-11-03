@@ -13,7 +13,8 @@ function set_secret_key() {
   if [[ -z "${secret_key}" ]]; then
     secret_key=$(random_str 48)
     set_config SECRET_KEY "${secret_key}"
-    echo "SECRETE_KEY:     ${secret_key}"
+    # SECRET_KEY 只写文件不回显：它是 Django 会话签名/密码重置 token 的凭据，
+    # 终端输出常被 tty 录制/截屏/日志收集，没有「用户需要看到」的消费场景
   fi
   if command -v hostname&>/dev/null; then
     SERVER_HOSTNAME=$(hostname)
@@ -41,10 +42,10 @@ function set_volume_dir() {
     fi
   fi
   if [[ ! -d "${volume_dir}" ]]; then
-    mkdir -p ${volume_dir}
-    chmod 700 ${volume_dir}
+    mkdir -p "${volume_dir}"
+    chmod 700 "${volume_dir}"
   fi
-  set_config VOLUME_DIR ${volume_dir}
+  set_config VOLUME_DIR "${volume_dir}"
 }
 
 function set_db_config() {
@@ -68,7 +69,10 @@ function set_external_db() {
   db_host=$(get_config DB_HOST)
   read_from_input db_host "Please enter DB server IP" "" "${db_host}"
   if [[ "${db_host}" == "127.0.0.1" || "${db_host}" == "localhost" ]]; then
+    # 容器内连 127.0.0.1 必然失败：此前只打印不拦截，错误延迟到 init_db
+    # 才爆发（表现为健康等待挂死）。在配置写入前直接终止，重跑向导即可
     log_error "Can not use localhost as DB server IP"
+    exit 1
   fi
   db_port=$(get_config DB_PORT)
   read_from_input db_port "Please enter DB server port" "" "${db_port}"
@@ -140,7 +144,9 @@ function set_external_redis() {
   redis_host=$(get_config REDIS_HOST)
   read_from_input redis_host "Please enter Redis server IP" "" "${redis_host}"
   if [[ "${redis_host}" == "127.0.0.1" || "${redis_host}" == "localhost" ]]; then
+    # 同 DB：容器内连 127.0.0.1 必然失败，在配置写入前终止
     log_error "Can not use localhost as Redis server IP"
+    exit 1
   fi
   redis_port=$(get_config REDIS_PORT)
   read_from_input redis_port "Please enter Redis server port" "" "${redis_port}"

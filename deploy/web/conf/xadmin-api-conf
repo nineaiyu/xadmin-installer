@@ -1,3 +1,5 @@
+# 本文件是主线 xadmin-web 仓 xadmin-api-conf 的副本：改这里必须同步主线并整体覆盖，
+# 再 diff 校验（历史漂移：本副本曾透传 X-Forwarded-Proto 导致可伪造 is_secure()）。
 # 后端地址运行期解析（勿改回静态 `proxy_pass http://server:8896;`）：
 # - 静态写法在 nginx 配置加载期解析域名：web/nginx 容器早于 server 启动时会
 #   [emerg] host not found in upstream 启动失败（靠 restart: always 兜底）；且 server
@@ -13,10 +15,15 @@ proxy_http_version 1.1;
 proxy_set_header Host $host;
 proxy_set_header Upgrade $http_upgrade;
 proxy_set_header Connection $http_connection;
-proxy_set_header X-Forwarded-For $remote_addr;
-#proxy_set_header X-Forwarded-Host $host:$server_port;  # 非默认的80，443端口，则需要打开该配置
-#proxy_set_header X-Forwarded-Proto $scheme;
-proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+# X-Forwarded-Host / X-Forwarded-Proto 一律用本机（边缘代理）观测值**覆写**，
+# 不透传客户端原值：Django 侧 USE_X_FORWARDED_HOST + SECURE_PROXY_SSL_HEADER
+# 无条件信任这两个头，透传等于允许客户端伪造 Host / 伪造 is_secure()
+# （污染密码重置与邀请链接、OAuth redirect_uri）。Host 已是 $host（裸主机名），
+# 这里保持一致；ALLOWED_HOSTS 校验仍是最后一道防线。
+proxy_set_header X-Forwarded-Host $host;
+# 上层有终止 TLS 的 SLB 时改回 $http_x_forwarded_proto（SLB 自行覆写，见下行注释）
+proxy_set_header X-Forwarded-Proto $scheme;
+#proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;  # 上层 SLB 终止 TLS 时启用本行并注释上一行
 proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;  # 如果上层还有其他 slb 需要使用 $proxy_add_x_forwarded_for 获取真实 ip
 
 proxy_ignore_client_abort on;

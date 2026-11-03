@@ -49,7 +49,7 @@ function post_install() {
     echo "http://${host}:${http_port}"
   fi
   echo "Superuser username: $(echo_green xadmin) Initial password: $(echo_red "${admin_password:-see installation output}")"
-  echo "(saved in ${CONFIG_FILE}; change it after the first login)"
+  echo "(saved in ${CONFIG_FILE}; change it after the first login; treat the printed password as sensitive: no screenshots or terminal recording)"
   echo_yellow "\n More information"
   echo "Documentation: https://docs.dvcloud.xin/"
   echo -e "\n"

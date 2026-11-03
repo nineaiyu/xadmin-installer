@@ -6,6 +6,9 @@ services:
     ulimits:
       core: 0
     restart: always
+    # docker stop 默认宽限 10s 后 SIGKILL 会硬杀在途 celery 任务；
+    # 宽限对齐开发栈拆分容器（worker/heavy）的口径
+    stop_grace_period: 300s
     command: start task
     env_file:
       - ${CONFIG_FILE}
@@ -19,5 +22,12 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+    # 日志上限兜底：已有 daemon.json 的机器不会补 log-opts（安装器只在
+    # daemon.json 缺失时写），per-service 声明保证任何路径日志不无限堆积
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - net

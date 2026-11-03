@@ -218,38 +218,44 @@ function clean_images() {
   fi
 }
 
-function wait_container_healthy() {
-  local name=$1 timeout=${2:-300} waited=0 status
-  while (( waited < timeout )); do
-    status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
-      "${name}" 2>/dev/null || true)
-    case "${status}" in
-      healthy) return 0 ;;
-      unhealthy | exited | dead)
-        log_error "${name} is ${status}"
-        return 1
-        ;;
-    esac
-    sleep 5
-    waited=$((waited + 5))
-  done
-  log_error "Timed out waiting for ${name} to become healthy (last status: ${status:-missing})"
-  return 1
-}
+# wait_container_healthy 已上移 utils.sh：备份/恢复/迁移等脚本同样需要有界健康等待，
+# 7_upgrade.sh 经 source utils.sh 继续可用
 
 function verify_app_health() {
-  local name
-  for name in xadmin-server xadmin-celery-worker xadmin-celery-heavy xadmin-web; do
-    if ! docker ps --format '{{.Names}}' | grep -qx "${name}"; then
-      # server 是硬性要求；celery / web 可能被模块裁剪关闭
-      if [[ "${name}" == "xadmin-server" ]]; then
-        log_error "xadmin-server is not running after upgrade"
-        return 1
-      fi
-      continue
+  local name enabled celery_found=0
+  # server 是硬性要求：升级后不在运行列表即失败
+  if ! docker ps --format '{{.Names}}' | grep -qx "xadmin-server"; then
+    log_error "xadmin-server is not running after upgrade"
+    return 1
+  fi
+  wait_container_healthy xadmin-server 300 || return 1
+
+  # celery 是否「应当运行」按 CELERY_ENABLED 配置判定（=0 为模块裁剪），容器名按
+  # 候选名单适配单容器（xadmin-celery）与拆分（worker/heavy/beat）两种形态。
+  # 此前写死三个开发栈容器名，安装器形态下一个都匹配不到——celery 挂死也会被
+  # 当「被裁剪」静默跳过，升级可绿灯结束而 celery 已死。
+  for name in $(celery_container_candidates); do
+    if docker ps --format '{{.Names}}' | grep -qx "${name}"; then
+      celery_found=1
+      wait_container_healthy "${name}" 300 || return 1
     fi
-    wait_container_healthy "${name}" 300 || return 1
   done
+  enabled=$(get_config CELERY_ENABLED)
+  if [[ "${celery_found}" != "1" && "${enabled}" != "0" ]]; then
+    log_error "celery is enabled but no celery container is running after upgrade"
+    return 1
+  fi
+
+  # web 与 celery 同口径：WEB_ENABLED=0 视为裁剪，否则不在运行列表即失败
+  if docker ps --format '{{.Names}}' | grep -qx "xadmin-web"; then
+    wait_container_healthy xadmin-web 300 || return 1
+  else
+    enabled=$(get_config WEB_ENABLED)
+    if [[ "${enabled}" != "0" ]]; then
+      log_error "web is enabled but xadmin-web is not running after upgrade"
+      return 1
+    fi
+  fi
   echo "  - containers are healthy"
 }
 
@@ -324,7 +330,9 @@ function upgrade_compose() {
 }
 
 function main() {
-  confirm="y"
+  # 升级是停服+迁移的重操作：主确认默认 n（回车不升级），与 clean_images /
+  # preflight 的确认口径一致；无人值守自动化走 INPLACE_ALIGN=1 等显式开关
+  confirm="n"
   to_version="${VERSION}"
   if [[ -n "${target}" ]]; then
     to_version="${target}"

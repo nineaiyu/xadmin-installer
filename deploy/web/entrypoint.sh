@@ -90,6 +90,15 @@ server {
     root /web/dist/;
     index index.html index.htm;
 
+    # 安全头与主线 xadmin-web/default.conf 对齐（server 级统一下发；nginx add_header
+    # 的继承规则是「子级一旦声明即整体不继承」，勿在 location 内散落安全头）
+    add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+    # CSP 页面护栏：SPA 由 nginx 托管，django-csp 覆盖不到文档层；策略串须与
+    # xadmin-server 的 server/settings/csp.py 保持一致（改策略需与主线 default.conf
+    # 三处同步），report-uri 走 /api 反代到后端上报端点
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; report-uri /api/common/api/csp-report" always;
+
     location ^~ /.well-known/acme-challenge/ {
         root /var/www/acme-challenge;
         default_type "text/plain";
@@ -99,6 +108,25 @@ server {
     # api 服务
     location ~ ^/(api|ws|flower|media|api-docs) {
         include conf.d/xadmin-api-conf;
+    }
+
+    # 带内容哈希的构建产物（vite assetsDir=static/...）：一年 immutable 长缓存；
+    # 此处自有 add_header（Cache-Control），按继承规则不再继承 server 级安全头——
+    # 非 HTML 静态资源无 CSP 语义，可接受（与主线 default.conf 同口径）
+    location ^~ /static/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files \$uri =404;
+    }
+
+    # SPA 入口与运行时公共配置禁止缓存：index.html 引用带哈希的 /static/ 产物，
+    # 浏览器缓存旧入口会在发版后引用已删除的 chunk（白屏）；expires 指令只写
+    # Expires/Cache-Control，不影响 add_header 继承，server 级安全头在此正常生效
+    location = /index.html {
+        expires -1;
+    }
+
+    location = /platform-config.json {
+        expires -1;
     }
 
     # 前端
@@ -121,6 +149,11 @@ EOF
 # 添加HTTPS配置
 addHttpsConf() {
     log_info "Adding HTTPS configuration for domain: $DOMAIN"
+
+    # 证书/私钥权限收敛为 600（对齐安装器 config ssl 的 chmod 600 口径；
+    # 宿主 bind mount 下属主同权，容器内 chmod 对宿主文件同步生效）
+    chmod 600 "${CERT_DIR}.pem" "${CERT_DIR}.key" 2>/dev/null \
+        || log_warn "Failed to chmod cert files under ${CERT_DIR}"
 
     # 清理HTTP配置
     rm -f /etc/nginx/conf.d/http-xadmin.conf
@@ -154,14 +187,41 @@ server {
     ssl_session_timeout 10m;
     ssl_session_tickets off;
 
-    # 安全头
+    # 安全头与主线 xadmin-web/default.conf 对齐（server 级统一下发；勿在 location
+    # 内散落安全头，子级一旦声明 add_header 即整体不继承）。本形态 TLS 由本容器终止
+    # 且按域名对外提供服务，HSTS 有意比主线默认（不发）更激进；includeSubDomains
+    # 会约束该域名的全部子域，子域尚有纯 HTTP 服务时须去掉该标记
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
-    add_header X-Frame-Options DENY always;
     add_header X-Content-Type-Options nosniff always;
+    add_header Referrer-Policy strict-origin-when-cross-origin always;
+    # CSP 页面护栏：SPA 由 nginx 托管，django-csp 覆盖不到文档层；策略串须与
+    # xadmin-server 的 server/settings/csp.py 保持一致（改策略需与主线 default.conf
+    # 三处同步）；frame-ancestors 'self' 等价承担防点击劫持语义（与主线一致，
+    # 不再另发 X-Frame-Options）
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'; report-uri /api/common/api/csp-report" always;
 
     # api 服务
     location ~ ^/(api|ws|flower|media|api-docs) {
         include conf.d/xadmin-api-conf;
+    }
+
+    # 带内容哈希的构建产物（vite assetsDir=static/...）：一年 immutable 长缓存；
+    # 此处自有 add_header（Cache-Control），按继承规则不再继承 server 级安全头——
+    # 非 HTML 静态资源无 CSP 语义，可接受（与主线 default.conf 同口径）
+    location ^~ /static/ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files \$uri =404;
+    }
+
+    # SPA 入口与运行时公共配置禁止缓存：index.html 引用带哈希的 /static/ 产物，
+    # 浏览器缓存旧入口会在发版后引用已删除的 chunk（白屏）；expires 指令只写
+    # Expires/Cache-Control，不影响 add_header 继承，server 级安全头在此正常生效
+    location = /index.html {
+        expires -1;
+    }
+
+    location = /platform-config.json {
+        expires -1;
     }
 
     # 前端

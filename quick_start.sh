@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 #
+# 失败即退：install 失败时不得继续 start，否则半安装状态被强行拉起、
+# 失败被 start 的成功退出码掩盖（与同目录其余脚本的 set 约定对齐）
+set -euo pipefail
 
 VERSION=dev
 DOWNLOAD_URL=https://github.com
@@ -62,12 +65,13 @@ function get_installer() {
 
 function config_installer() {
   cd /opt/xadmin-installer-${VERSION} || exit 1
-  ./xadmin.sh install
-  ./xadmin.sh start
+  # 双保险：set -e 之外显式短路，install 失败绝不拉起 start
+  ./xadmin.sh install && ./xadmin.sh start
 }
 
 function main(){
-  if [[ "${OS}" == 'Darwin' ]]; then
+  # curl|bash 形态下 OS 可能未导出，set -u 会把裸 ${OS} 判为 unbound
+  if [[ "${OS:-}" == 'Darwin' ]]; then
     echo
     echo "Unsupported Operating System Error"
     exit 1

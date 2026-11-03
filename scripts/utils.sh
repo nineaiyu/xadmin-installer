@@ -40,7 +40,11 @@ function has_config() {
 function get_config() {
   key=$1
   default=${2-''}
-  value=$(grep "^${key}=" "${CONFIG_FILE}" | awk -F= '{ print $2 }' | awk -F' ' '{ print $1 }')
+  # 取第一个 = 之后的整段值（值可能含 = / 空格，如 base64 密码）：
+  # 旧实现「$2 再取首词」会截断含 = 的值——set_config 写入完整值、读回却是残值，
+  # 容器拿到的密码与库初始化密码不一致。正则允许行首空白，与 has_config/set_config 对齐；
+  # 多行命中取第一行（键唯一，防御手工编辑产生的重复行）
+  value=$(sed -n "s/^[ \t]*${key}=//p" "${CONFIG_FILE}" | head -n1)
   if [[ -z "$value" ]];then
     value="$default"
   fi
@@ -576,7 +580,10 @@ EOF
 }
 
 function get_latest_version() {
-  curl -s 'https://api.github.com/repos/nineaiyu/xadmin-server/releases/latest' |
+  # 网络超时（connect 5s / 总 10s）：目标机访问 GitHub API 遇黑洞型防火墙时
+  # check_update 必须快速失败而不是无限挂起（离线/国内目标机是高风险场景）；
+  # -S 在静默模式下保留错误输出，便于排障
+  curl -sS --connect-timeout 5 -m 10 'https://api.github.com/repos/nineaiyu/xadmin-server/releases/latest' |
     grep "tag_name" | head -n 1 | awk -F ":" '{print $2}' |
     sed 's/\"//g;s/,//g;s/ //g'
 }
@@ -655,13 +662,47 @@ function down_db_ops_env() {
   docker rm xadmin-server &>/dev/null
 }
 
+# 有界健康等待：替代散落各处的 `while != healthy; sleep` 无超时轮询——
+# 容器 unhealthy / 重启循环 / 配置错误时那些循环会无限挂起（「装到一半卡死」
+# 的历史形态）。unhealthy/exited/dead 即刻失败；超时返回 1，由调用方决定后续。
+function wait_container_healthy() {
+  local name=$1 timeout=${2:-300} waited=0 status
+  while (( waited < timeout )); do
+    status=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+      "${name}" 2>/dev/null || true)
+    case "${status}" in
+      healthy) return 0 ;;
+      unhealthy | exited | dead)
+        log_error "${name} is ${status}"
+        return 1
+        ;;
+    esac
+    sleep 5
+    waited=$((waited + 5))
+  done
+  log_error "Timed out waiting for ${name} to become healthy (last status: ${status:-missing})"
+  return 1
+}
+
+# celery 的两种部署形态：安装器单容器 xadmin-celery（compose/celery.yml）与
+# 对齐开发栈的拆分三容器 worker/heavy/beat。停服与健康校验一律遍历该候选名单、
+# 只对「实际在跑」的容器动手：写死单一形态的名字会让另一种形态全部空转
+# （停不掉 celery / 健康校验按「被裁剪」静默跳过）。
+function celery_container_candidates() {
+  echo "xadmin-celery"
+  echo "xadmin-celery-worker"
+  echo "xadmin-celery-heavy"
+  echo "xadmin-celery-beat"
+}
+
 function init_mariadb_tz_info() {
   DB_HOST=$(get_config DB_HOST)
 
   if [[ "${DB_HOST}" == "mysql" ]]; then
-    while [[ "$(docker inspect -f "{{.State.Health.Status}}" xadmin-${DB_HOST})" != "healthy" ]]; do
-      sleep 5s
-    done
+    if ! wait_container_healthy xadmin-mysql 300; then
+      log_error "Database container xadmin-mysql failed to become healthy; check 'docker logs xadmin-mysql'"
+      exit 1
+    fi
     sql_cmd='mariadb-tzinfo-to-sql /usr/share/zoneinfo | mariadb -P$DB_PORT -p$MARIADB_ROOT_PASSWORD  mysql'
     docker exec -it xadmin-${DB_HOST} bash -c "${sql_cmd}"  || {
       log_error "Failed to import tz info!"
@@ -696,6 +737,8 @@ function init_default_data() {
     exit 1
   }
   log_success "Superuser 'xadmin' initial password: ${admin_password} (saved in ${CONFIG_FILE})"
+  # 密码需展示给安装者（首登要用），但终端输出常被录屏/截屏/日志收集——提示防护
+  log_warn "Treat the password above as sensitive: no screenshots or terminal recording; change it after the first login"
   if [[ "${WITH_DEMO_DATA:-0}" == "1" ]]; then
     log_success "Demo account: admin / admin123 (role 'demo', destructive writes pruned)"
   fi
@@ -896,6 +939,13 @@ function ensure_pg_data_version() {
     docker exec xadmin-pg-migrate pg_isready -q -U "${db_user}" &> /dev/null && break
     sleep 2s
   done
+  # 轮询结束必须复核就绪：旧 PG 容器 60s 内未就绪时继续 pg_dump 只会失败或挂起
+  if ! docker exec xadmin-pg-migrate pg_isready -q -U "${db_user}" &> /dev/null; then
+    log_error "Source PostgreSQL (xadmin-pg-migrate) not ready after 60s; the data directory is untouched"
+    log_error "Check 'docker logs xadmin-pg-migrate' and retry the upgrade"
+    docker rm -f xadmin-pg-migrate &> /dev/null
+    exit 1
+  fi
   if ! docker exec xadmin-pg-migrate pg_dump -U "${db_user}" -d "${db_name}" -Fc > "${dump_file}"; then
     log_error "pg_dump failed; the data directory is untouched"
     docker rm -f xadmin-pg-migrate &> /dev/null
@@ -919,10 +969,27 @@ function ensure_pg_data_version() {
     docker exec xadmin-pg-restore pg_isready -q -U "${db_user}" &> /dev/null && break
     sleep 2s
   done
+  # 轮询结束必须复核就绪：新 PG 容器 90s 内未就绪时 pg_restore 必然连接失败，
+  # 留下的半初始化目录只能靠旧数据目录回切挽回，必须在恢复前失败
+  if ! docker exec xadmin-pg-restore pg_isready -q -U "${db_user}" &> /dev/null; then
+    log_error "pg${image_version} container failed to become ready within 90s"
+    log_error "Rollback: move ${volume_dir}/postgresql/data.pg${data_version}-${timestamp} back to ${volume_dir}/postgresql/data"
+    docker rm -f xadmin-pg-restore &> /dev/null
+    exit 1
+  fi
   echo "  - restoring data"
   if ! docker exec -i xadmin-pg-restore pg_restore -U "${db_user}" -d "${db_name}" --no-owner --no-acl \
     < "${dump_file}"; then
-    log_warn "pg_restore reported non-fatal warnings; verify the row counts below"
+    # pg_restore 非零无法区分「忽略已存在对象的告警」与「连接中断/部分恢复失败」，
+    # 一律走显式确认（默认拒绝）：半恢复库进入后续 migrate 的风险需要人来判断
+    local restore_answer="n"
+    log_warn "pg_restore exited non-zero (details above)"
+    read_from_input restore_answer "Continue the upgrade on this partially restored database?" "y/n" "${restore_answer}"
+    if [[ "${restore_answer}" != "y" ]]; then
+      log_error "pg_restore aborted. Rollback: move ${volume_dir}/postgresql/data.pg${data_version}-${timestamp} back to ${volume_dir}/postgresql/data"
+      log_error "(dump kept at ${dump_file}; the xadmin-pg-restore container is left for inspection: docker rm -f xadmin-pg-restore)"
+      exit 1
+    fi
   fi
   echo -n "  - restored migrations/users: "
   docker exec xadmin-pg-restore psql -U "${db_user}" -d "${db_name}" -tAc \
@@ -937,18 +1004,22 @@ function perform_db_migrations() {
   redis_host=$(get_config REDIS_HOST)
 
   create_db_ops_env
+  # 有界健康等待替代无超时轮询：DB/Redis 卡在 unhealthy（配置错误、重启循环）时
+  # 快速失败并给出排障指引，不再无限挂起；迁移场景超时放宽到 600s（大库初始化较慢）
   case "${db_host}" in
     mysql|postgresql)
-      while [[ "$(docker inspect -f "{{.State.Health.Status}}" xadmin-${db_host})" != "healthy" ]]; do
-        sleep 5s
-      done
+      if ! wait_container_healthy "xadmin-${db_host}" 600; then
+        log_error "Database container xadmin-${db_host} failed to become healthy; check 'docker logs xadmin-${db_host}'"
+        exit 1
+      fi
       ;;
   esac
 
   if [[ "${redis_host}" == "redis" ]]; then
-    while [[ "$(docker inspect -f "{{.State.Health.Status}}" xadmin-redis)" != "healthy" ]]; do
-      sleep 5s
-    done
+    if ! wait_container_healthy xadmin-redis 300; then
+      log_error "Redis container failed to become healthy; check 'docker logs xadmin-redis'"
+      exit 1
+    fi
   fi
 
   if is_fresh_database; then

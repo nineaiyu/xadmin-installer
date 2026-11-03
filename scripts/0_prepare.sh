@@ -46,6 +46,15 @@ function download_and_verify() {
       rm -f "${target_path}" "${md5_target_path}"
       exit 1
     }
+    # 供应链完整性：下载后必须复核 md5（与 quick_start.sh 对 release tarball 的
+    # fail-closed 同一标准）。此前 md5 只用于缓存跳过判断，镜像源被劫持或损坏时
+    # 会静默安装坏二进制，失败延迟到运行时
+    md5_matched=$(check_md5 "${target_path}" "${expected_md5}")
+    if [[ "${md5_matched}" != "1" ]]; then
+      log_error "Checksum verification failed for $(basename "${target_path}")"
+      rm -f "${target_path}" "${md5_target_path}"
+      exit 1
+    fi
   else
     echo "Using cache: ${target_path}"
   fi

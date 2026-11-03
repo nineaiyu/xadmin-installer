@@ -8,5 +8,11 @@ services:
       - ${CONFIG_FILE}
     volumes:
       - ${VOLUME_DIR}/server/data:/data/xadmin-server/data
+    # 日志上限兜底：与常驻服务同一口径（迁移/初始化输出同样可堆积）
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - net

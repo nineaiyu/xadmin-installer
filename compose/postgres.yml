@@ -17,5 +17,11 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
+    # 日志上限兜底：已有 daemon.json 的机器不会补 log-opts，per-service 声明兜住
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
     networks:
       - net

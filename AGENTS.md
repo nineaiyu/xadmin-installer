@@ -59,7 +59,7 @@
    （`xadmin-server/docs/ops/upgrade-stock.md`）；注意版本串非 `x.y.z` 形态时该门禁会跳过
    （log_warn + 放行），dev 版不受限是有意设计。
 7. **演示模式**：`WITH_DEMO_DATA=1` 时 `init_default_data` 追加 `--with-demo`（演示账号
-   `admin/admin123`），生产默认不启用。
+   `admin/admin123`，**不是**超管 `xadmin`），生产默认不启用。
 8. **新增命令要三处一致**：`xadmin.sh` 的 case 分支、`usage` 帮助文本、`README.md` 命令表。
    新增/改名命令时三处同步修改；当前 23 个命令已对齐。
 9. **配置要满足服务端 fail-fast 校验**：`SECRET_KEY` 由 `set_secret_key` 生成；`ALLOWED_HOSTS`
@@ -106,7 +106,7 @@ VERSION=dev CONFIG_FILE=/tmp/xadmin-config.txt VOLUME_DIR=/tmp/xadmin-data CONFI
 → 安装器运行期统一从阿里云仓拉取（`utils.sh` 的 `pull_image` 按 `DOCKER_IMAGE_MIRROR` 加前缀），
 运行时自有镜像（server / web）缺任一 tag 都装不起来。
 
-三条硬约束：
+四条硬约束：
 
 1. **同步必须等源镜像**：同批 tag 推送时同步会先起跑，工作流内置「等待源镜像出现」的有界轮询，
    不要改回「一次性失败退出」。
